@@ -5,8 +5,8 @@
 # Read on every session start. Read .covault/schemas/<type>.md before
 # writing any note of that type.
 
-covault_version: "0.4"
-schema_version: 1
+covault_version: "0.6"
+schema_version: 2
 scope: person                                # vs "project" for project vaults
 vault_name: "<set during bootstrap>"
 

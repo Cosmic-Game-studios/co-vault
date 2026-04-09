@@ -4,6 +4,79 @@ All notable changes to co-vault are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-04-09
+
+A scientifically-grounded redesign of the loop. Predictions become first-class
+data, calibration is measured automatically, consolidation follows the brain's
+own memory architecture. Zero manual maintenance.
+
+### Added
+- **6-phase loop** (was 5): `ORIENT → HYPOTHESIZE → EXECUTE → VERIFY → CONSOLIDATE → REVIEW`.
+  Each phase is tagged with its function in cognitive science:
+  - ORIENT = situated perception (Hutchins 1995)
+  - HYPOTHESIZE = generative model with predictions (Friston 2010, predictive coding)
+  - EXECUTE = motor action
+  - VERIFY = prediction error checking (Bayesian updating)
+  - CONSOLIDATE = memory consolidation (McClelland 1995, CLS theory)
+  - REVIEW = cognitive control / conflict resolution
+- **`## Predictions` section required in every proposal.** Minimum 3 testable
+  predictions with explicit confidence values (0–100%). Without predictions
+  there is no calibration signal.
+- **`## Verification` section required in every report.** Each prediction
+  marked `correct` / `partial` / `wrong` / `untestable`.
+- **Auto-maintenance script `bin/maintain-vault.sh`** runs after every
+  loop. Six steps: validate → rebuild index → confidence decay →
+  fact promotion → archive expired → recompute calibration. Deterministic,
+  fast (<2s for 500-note vault), no LLM in the loop.
+- **CLS-style fact consolidation**: `confirmation_count >= 3` auto-promotes
+  an `agent` fact to `agent+reviewed` (immutable). Mirrors hippocampus →
+  neocortex transfer in human memory.
+- **Ebbinghaus-like confidence decay**: notes whose `last_confirmed` is
+  more than 30 days old get downgraded one confidence step (high → medium → low).
+- **Auto-archival of expired notes**: notes past their `valid_until` date
+  are moved to `_archive/` with a top comment.
+- **Calibration log** (`calibration_log.md`) auto-maintained at the
+  vault root. Tracks lifetime prediction accuracy with a Brier-like
+  score (0 = perfect, 1 = worst). Read by the agent on session start
+  to ground confidence values.
+- **Autonomous mode**: trigger phrases `autonomous: <intent>`,
+  `fire and forget: <intent>`. Hard limits: feature-branch required,
+  max 5 sub-tasks, 30000-token budget, immediate exit on any conflict
+  or out-of-scope discovery. Mandatory final report with branch review
+  instruction.
+- **`examples/dataview-queries.md`**: 15 ready-to-use Dataview queries
+  for live dashboards in Obsidian. 10 for project vaults, 5 for person
+  vaults.
+- **Schemas now declare memory_system mapping**. Each folder is tagged
+  procedural / semantic / episodic / working in the manifest, making
+  the cognitive-science framing explicit and machine-readable.
+
+### Changed
+- **Schema version bumped to 2.** Both vault types. v1 vaults still
+  validate (backward-compatible), but new vaults are v2.
+- `proposal.md` schema requires the new `## Predictions` section and
+  `prediction_count` frontmatter field.
+- `report.md` schema requires the new `## Verification` section and
+  `predictions_correct`, `predictions_partial`, `predictions_wrong`
+  frontmatter fields.
+- `fact.md` schema adds `confirmation_count` and `last_confirmed`
+  fields for CLS-style consolidation tracking.
+- `install.sh` now also installs `validate-vault.sh` and
+  `maintain-vault.sh` into the skill bin directory.
+- `validate-vault.sh` accepts both schema_version 1 and 2; added
+  `calibration` to the required project schemas.
+- Hard rules grew from 16 to 20 (added rules for predictions,
+  verification, calibration honesty, autonomous mode).
+
+### Notes
+- The whole point of v0.6 is to make agent behavior measurable. Every
+  prediction goes into the calibration log. Every fact tracked across
+  sessions for consolidation. No more "trust me" — there are now
+  numbers behind every claim the skill makes.
+- Backward compatibility: v1 vaults still validate and run, but they
+  won't get the calibration features until they upgrade their schemas.
+  No automatic migration is provided yet — manual edit or re-bootstrap.
+
 ## [0.5.0] — 2026-04-09
 
 ### Added
@@ -122,6 +195,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Claude Code's built-in memory.
 - MIT license.
 
+[0.6.0]: https://github.com/Cosmic-Game-studios/co-vault/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Cosmic-Game-studios/co-vault/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Cosmic-Game-studios/co-vault/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Cosmic-Game-studios/co-vault/releases/tag/v0.3.0

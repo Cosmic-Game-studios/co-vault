@@ -19,7 +19,7 @@
 
 set -uo pipefail
 
-SUPPORTED_SCHEMA_VERSION=1
+SUPPORTED_SCHEMA_VERSIONS="1 2"
 ERRORS=0
 WARNINGS=0
 
@@ -49,8 +49,8 @@ fi
 SCHEMA_VERSION=$(grep -E '^schema_version:' "$MANIFEST" | awk '{print $2}')
 if [ -z "$SCHEMA_VERSION" ]; then
   err "$MANIFEST has no schema_version field"
-elif [ "$SCHEMA_VERSION" != "$SUPPORTED_SCHEMA_VERSION" ]; then
-  err "$MANIFEST schema_version=$SCHEMA_VERSION (expected $SUPPORTED_SCHEMA_VERSION)"
+elif ! echo " $SUPPORTED_SCHEMA_VERSIONS " | grep -q " $SCHEMA_VERSION "; then
+  err "$MANIFEST schema_version=$SCHEMA_VERSION (supported: $SUPPORTED_SCHEMA_VERSIONS)"
 else
   ok "manifest schema_version=$SCHEMA_VERSION"
 fi
@@ -70,7 +70,7 @@ if [ ! -d "$SCHEMA_DIR" ]; then
   err "missing $SCHEMA_DIR"
 else
   if [ "$SCOPE" = "project" ]; then
-    REQUIRED_SCHEMAS="decision fact proposal report conflict domain index"
+    REQUIRED_SCHEMAS="decision fact proposal report conflict domain index calibration"
   else
     REQUIRED_SCHEMAS="identity preference pattern correction context index"
   fi
