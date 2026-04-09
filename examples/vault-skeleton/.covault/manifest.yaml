@@ -1,0 +1,108 @@
+# co-vault manifest — read by agents on session start
+# This file is the single source of truth for vault structure and schemas.
+# Agents MUST read this file before performing any operation on the vault.
+
+covault_version: "0.3"
+schema_version: 1
+vault_name: "<set during bootstrap>"
+
+# Authority hierarchy — applied to every note based on its `author:` field.
+# Higher = more authority. Agents may NEVER edit notes with author equal to or
+# above `agent+reviewed`.
+authority_hierarchy:
+  - user             # immutable to agents
+  - agent+reviewed   # immutable to agents
+  - agent            # mutable by agents
+
+# Conventions — applied throughout the vault.
+conventions:
+  timestamp_format: "%Y-%m-%dT%H:%MZ"     # UTC, minute precision
+  filename_format: "<YYYY-MM-DD-HHMM>-<slug>.md"
+  slug_rules: "2-4 words, lowercase, hyphenated"
+  collision_rule: "append -2, -3, ... until unique"
+  one_claim_per_fact: true
+  link_format: "[[wikilink]]"
+  never_duplicate_text: true              # link instead of copy
+  commit_after_every_phase_write: true
+
+# Folders — each maps to a note type with its own schema.
+# Agents look up the schema in .covault/schemas/<note_type>.md before writing.
+folders:
+  index.md:
+    note_type: index
+    description: "Vault entry point. Hand-curated by the user."
+    typical_author: user
+    schema: .covault/schemas/index.md
+
+  domains/:
+    note_type: domain
+    description: "One file per subsystem. Defines scope and ground rules."
+    typical_author: user
+    schema: .covault/schemas/domain.md
+    example: .covault/examples/domain.md
+
+  decisions/:
+    note_type: decision
+    description: "Immutable architectural and product choices."
+    typical_author: user
+    schema: .covault/schemas/decision.md
+    example: .covault/examples/decision.md
+
+  facts/:
+    note_type: fact
+    description: "Atomic observations made by the agent during work. One claim per file."
+    typical_author: agent
+    schema: .covault/schemas/fact.md
+    example: .covault/examples/fact.md
+
+  proposals/:
+    note_type: proposal
+    description: "Plans written by the agent BEFORE executing a task."
+    typical_author: agent
+    schema: .covault/schemas/proposal.md
+    example: .covault/examples/proposal.md
+
+  reports/:
+    note_type: report
+    description: "What actually happened after a proposal was executed."
+    typical_author: agent
+    schema: .covault/schemas/report.md
+    example: .covault/examples/report.md
+
+  conflicts/:
+    note_type: conflict
+    description: "Open contradictions discovered by the agent. BLOCKS work in the affected domain."
+    typical_author: agent
+    schema: .covault/schemas/conflict.md
+    example: .covault/examples/conflict.md
+    blocks_loop: true
+
+  _archive/:
+    note_type: any
+    description: "Soft-deleted notes. Never delete files; move them here."
+    typical_author: any
+    rule: "every archived file gets a top comment explaining why it was archived"
+
+# Loop — the 5 phases the agent must run on every task.
+loop:
+  - phase: 1
+    name: ORIENT
+    purpose: "Read index, find user notes in relevant domains, check for open conflicts."
+    can_block: true
+  - phase: 2
+    name: PROPOSE
+    purpose: "Write a proposal file before touching project code."
+    can_block: false
+  - phase: 3
+    name: EXECUTE
+    purpose: "Do the actual work on project code."
+    can_block: false
+  - phase: 4
+    name: REPORT
+    purpose: "Write a report and any new facts discovered."
+    can_block: false
+  - phase: 5
+    name: REQUEST_REVIEW
+    purpose: "If a contradiction was found, write a conflict and STOP."
+    can_block: true
+    only_if: contradiction_found
