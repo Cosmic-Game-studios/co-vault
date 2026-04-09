@@ -1,76 +1,89 @@
 ---
 name: co-vault
 description: Use whenever the user gives you a task in a project where COVAULT_PATH
-  is set, OR the user says "bootstrap co-vault", "co-vault review", or "abort"
-  mid-task. This skill makes you operate against a shared Obsidian vault where
-  the user's notes are immutable ground truth. The vault is self-describing — you
-  read `.covault/manifest.yaml` once and `.covault/schemas/<type>.md` before each
-  write. You MUST follow the 5-phase loop and you MUST NOT silently override notes
-  with `author: user`. Works for any project, any language, any stack.
+  is set, OR whenever COVAULT_PERSON is set (to load durable knowledge about the
+  user across all projects), OR the user says "bootstrap co-vault", "co-vault
+  review", or "abort". This skill operates against TWO kinds of self-describing
+  vaults — a project vault (per-project) and a person vault (per-human, cross-
+  project, cross-agent). User notes are immutable. Agent writes are governed by
+  schemas declared in `.covault/`. Works for any project, any language, any stack.
 ---
 
-# co-vault — agent operating instructions (v0.3, manifest-driven)
+# co-vault — agent operating instructions (v0.4, dual scope)
 
-You are operating against a shared, self-describing knowledge vault.
-Follow these instructions literally. Do not improvise the loop. Do not
-skip phases. If you ever lose track of which phase you are in, restart
-from PHASE 1.
+You operate against up to two self-describing vaults:
 
-## CONVENTIONS — applied throughout
+- **Project vault** (`$COVAULT_PATH`) — per-project facts, decisions, proposals,
+  reports, conflicts. Loaded per task.
+- **Person vault** (`$COVAULT_PERSON`) — durable knowledge about the user
+  across all their projects. Cross-agent. Loaded once per session.
 
-- **Self-description first**: the vault declares its own structure in
-  `$COVAULT_PATH/.covault/manifest.yaml`. You read this once per session.
-  You read `$COVAULT_PATH/.covault/schemas/<type>.md` before writing any
-  note of that type for the first time in a session.
-- **Timestamp format**: `$(date -u +%Y-%m-%dT%H:%MZ)` (UTC, minute precision).
-- **Slug format**: 2–4 words, lowercase, hyphenated.
-- **Filename format**: `<YYYY-MM-DD-HHMM>-<slug>.md`.
-- **Collision rule**: if filename exists, append `-2`, `-3`, ... until unique.
-- **Path hygiene**: never read or write outside `$COVAULT_PATH` during the
-  loop, except for project code touched in PHASE 3.
-- **Phase announcement**: at the start of every phase, print one line:
-  `[co-vault: PHASE <N>/5 — <NAME>]`. Non-negotiable.
-- **Commit after every phase write**: after writing any file in the vault,
-  run `git -C "$COVAULT_PATH" add . && git -C "$COVAULT_PATH" commit -q -m "<msg>"`.
+Both vaults are self-describing: each has `.covault/manifest.yaml`,
+`.covault/schemas/<type>.md`, `.covault/examples/<type>.md`. You read the
+manifest once per session and the relevant schema before each write.
+
+Follow these instructions literally. Do not improvise. If you ever lose
+track of which phase you are in, restart from PHASE 1.
+
+## CONVENTIONS — applied to both vault types
+
+- **Self-description first**: read `.covault/manifest.yaml` once per session
+  for each vault. Read `.covault/schemas/<type>.md` and the matching example
+  before writing any note of that type for the first time.
+- **Timestamp**: `$(date -u +%Y-%m-%dT%H:%MZ)`.
+- **Slug**: 2–4 words, lowercase, hyphenated (project) or canonical topic
+  key (person).
+- **Filename collision**: append `-2`, `-3`, ... until unique.
+- **Path hygiene**: never read or write outside the vault paths during the
+  loop, except for project code in PHASE 3.
+- **Phase announcement**: print `[co-vault: PHASE <N>/5 — <name>]` at the
+  start of every phase. Non-negotiable.
+- **Commit after every write**: `git -C <vault> add . && git -C <vault> commit -q -m "<msg>"`.
+- **Token efficiency**: never bulk-load a vault. Always go through indexes
+  and named files.
 
 ## ACTIVATION CHECK — run first, every session
 
 ```bash
-# 1. Vault path must be set
-if [ -z "${COVAULT_PATH:-}" ]; then
-  echo "co-vault: COVAULT_PATH not set. Skill inactive."
-  exit 0
+# --- Project vault ---
+PROJECT_VAULT_OK=0
+if [ -n "${COVAULT_PATH:-}" ]; then
+  if [ -f "$COVAULT_PATH/.covault/manifest.yaml" ]; then
+    SV=$(grep -E '^schema_version:' "$COVAULT_PATH/.covault/manifest.yaml" | awk '{print $2}')
+    if [ "$SV" = "1" ]; then
+      PROJECT_VAULT_OK=1
+    else
+      echo "co-vault: project vault schema_version=$SV (expected 1) — refusing"
+    fi
+  else
+    echo "co-vault: COVAULT_PATH set but no manifest — run BOOTSTRAP"
+  fi
 fi
 
-# 2. Manifest must exist — vault is self-describing
-if [ ! -f "$COVAULT_PATH/.covault/manifest.yaml" ]; then
-  echo "co-vault: no manifest at $COVAULT_PATH/.covault/manifest.yaml"
-  echo "co-vault: this vault is uninitialized — run BOOTSTRAP"
-  exit 0
+# --- Person vault ---
+PERSON_VAULT_OK=0
+if [ -n "${COVAULT_PERSON:-}" ]; then
+  if [ -f "$COVAULT_PERSON/.covault/manifest.yaml" ]; then
+    SV=$(grep -E '^schema_version:' "$COVAULT_PERSON/.covault/manifest.yaml" | awk '{print $2}')
+    if [ "$SV" = "1" ]; then
+      PERSON_VAULT_OK=1
+    else
+      echo "co-vault: person vault schema_version=$SV (expected 1) — refusing"
+    fi
+  else
+    echo "co-vault: COVAULT_PERSON set but no manifest — run BOOTSTRAP --person"
+  fi
 fi
 
-# 3. Read the manifest into context
-cat "$COVAULT_PATH/.covault/manifest.yaml"
-
-# 4. Verify schema version compatibility
-SCHEMA_VERSION=$(grep -E '^schema_version:' "$COVAULT_PATH/.covault/manifest.yaml" \
-  | awk '{print $2}')
-if [ "$SCHEMA_VERSION" != "1" ]; then
-  echo "co-vault: incompatible schema_version $SCHEMA_VERSION (this skill expects 1)"
-  echo "co-vault: refusing to operate. Tell the user to update the skill."
-  exit 0
+if [ "$PROJECT_VAULT_OK" = "0" ] && [ "$PERSON_VAULT_OK" = "0" ]; then
+  echo "co-vault: no vaults active. Skill is dormant."
 fi
 ```
 
-If `COVAULT_PATH` is not set, ask the user. Do not assume one.
-If the manifest is missing, run BOOTSTRAP (see bottom).
-If the schema version mismatches, refuse to operate.
+If `COVAULT_PERSON` is active, immediately run the SESSION START sequence
+below. If `COVAULT_PATH` is active, run the LOOP per task as usual.
 
-## AUTHORITY RULES — non-negotiable
-
-Every note has an `author:` field in its frontmatter. Check it before
-every write. The hierarchy comes from the manifest, but you must apply it
-without exception:
+## AUTHORITY RULES — apply to both vault types, non-negotiable
 
 | author value      | your permitted operations                                        |
 |-------------------|------------------------------------------------------------------|
@@ -79,24 +92,65 @@ without exception:
 | `agent`           | READ, WRITE, EDIT, SUPERSEDE, ARCHIVE.                           |
 | (no author field) | TREAT AS BROKEN. Report to user. Do not write to it.             |
 
-If you ever feel the urge to modify an `author: user` note, stop. Open a
-conflict (PHASE 5) instead.
+In the **project vault**, the default author for new notes is `agent` for
+proposals/reports/facts/conflicts, and `user` for decisions/index/domains.
+
+In the **person vault**, the default author is `agent` — the agent observes
+and writes; the user can override or correct any time.
 
 ## SCHEMA LOOKUP — before every write
 
-Before writing a note of type `T` for the first time in a session, run:
+Before writing a note of type `T` for the first time in a session, in
+either vault, run:
 
 ```bash
-cat "$COVAULT_PATH/.covault/schemas/$T.md"
-cat "$COVAULT_PATH/.covault/examples/$T.md"
+cat "<vault>/.covault/schemas/$T.md"
+cat "<vault>/.covault/examples/$T.md"
 ```
 
-Use the schema to know which frontmatter fields are required. Use the
-example to pattern-match the body structure. Do not invent fields. Do not
-omit required fields. If your write fails to match the schema, the skill
-has failed.
+Match the schema. Use the example as a template. Do not invent fields.
+Do not omit required fields.
 
-## THE LOOP
+---
+
+## SESSION START — only if COVAULT_PERSON is active
+
+Run ONCE per session, before any task. This loads durable knowledge about
+the person into context.
+
+```bash
+cd "$COVAULT_PERSON"
+
+# 1. Read the manifest (already done in ACTIVATION)
+# 2. Read the index — small file, lists every note with one-line summary
+cat _index.md
+
+# 3. Always load all corrections — these are priority
+find corrections -name '*.md' -not -name '.gitkeep' 2>/dev/null | while read f; do
+  echo "=== $f ==="
+  cat "$f"
+  echo
+done
+
+# 4. Always load core identity
+[ -f identity/basic.md ] && { echo "=== identity/basic.md ==="; cat identity/basic.md; echo; }
+```
+
+That is all the bulk loading you do for the person vault. Everything else
+is fetched on demand: when a task touches a topic that the index suggests
+has a relevant preference / pattern / context note, you `cat` exactly that
+file.
+
+**Token budget rule**: total person vault overhead per session must stay
+under ~3000 tokens. The index + corrections + basic identity should fit
+this. If they do not, run REVIEW and prune.
+
+---
+
+## THE LOOP — for every task in the project vault
+
+Only runs if `COVAULT_PATH` is active. Same 5 phases as before. The person
+vault is consulted opportunistically inside ORIENT and PERSON LEARNING.
 
 ```
 PHASE 1 ORIENT  →  PHASE 2 PROPOSE  →  (user confirm if not small)
@@ -113,303 +167,251 @@ PHASE 1 ORIENT  →  PHASE 2 PROPOSE  →  (user confirm if not small)
                                       no           yes
                                        │            │
                                        ▼            ▼
-                                      done   PHASE 5 REQUEST_REVIEW → STOP
+                              PERSON LEARNING   PHASE 5 REQUEST_REVIEW → STOP
+                                       │
+                                       ▼
+                                      done
 ```
 
-You will run all 5 phases. You will not collapse PROPOSE into EXECUTE.
-You will not skip REPORT because the task was small. You will not silently
-proceed past REQUEST_REVIEW.
-
----
-
-## PHASE 1 — ORIENT
+### PHASE 1 — ORIENT
 
 Announce: `[co-vault: PHASE 1/5 — ORIENT]`
 
-Run before reading any project code.
-
 ```bash
 cd "$COVAULT_PATH"
-
-# 1.1 — read the index
 cat index.md
+DOMAINS="<inferred from user request, space-separated>"
 
-# 1.2 — infer the relevant DOMAIN(S) from the user's request
-#       Tasks may touch multiple domains. Process all of them.
-DOMAINS="auth ui"   # space-separated, inferred from user request
-
-# 1.3 — read each domain note (if it exists)
+# Load relevant domain notes
 for D in $DOMAINS; do
   [ -f "domains/$D.md" ] && { echo "=== domains/$D.md ==="; cat "domains/$D.md"; echo; }
 done
 
-# 1.4 — pull every user-authored note in those domains
+# Pull user-authored notes in those domains
 for D in $DOMAINS; do
-  echo "--- user notes in domain: $D ---"
   find decisions facts -name '*.md' 2>/dev/null | while read f; do
-    if grep -qE '^author:[[:space:]]*user[[:space:]]*$' "$f" \
-       && grep -qE "domain:.*$D" "$f"; then
-      echo "=== $f ==="
-      cat "$f"
-      echo
-    fi
+    grep -qE '^author:[[:space:]]*user[[:space:]]*$' "$f" \
+      && grep -qE "domain:.*$D" "$f" \
+      && { echo "=== $f ==="; cat "$f"; echo; }
   done
 done
 
-# 1.5 — check for OPEN conflicts in those domains
+# Check for OPEN conflicts in those domains
 for D in $DOMAINS; do
   find conflicts -name '*.md' 2>/dev/null | while read f; do
-    if grep -qE '^status:[[:space:]]*open[[:space:]]*$' "$f" \
-       && grep -qE "domain:.*$D" "$f"; then
-      echo "OPEN CONFLICT: $f"
-    fi
+    grep -qE '^status:[[:space:]]*open[[:space:]]*$' "$f" \
+      && grep -qE "domain:.*$D" "$f" \
+      && echo "OPEN CONFLICT: $f"
   done
 done
 ```
 
-**Stopping conditions for PHASE 1:**
+**ALSO**, if the person vault is active, scan the index for relevant
+preferences and patterns:
 
-- If 1.5 reports any open conflict → STOP. Tell the user the conflict
-  path. Do not proceed until they resolve it and explicitly say to continue.
-- If a `user`-authored note in 1.4 directly contradicts the task the user
-  just asked for → STOP. Quote the note. Ask whether it is being revised.
-  Do not proceed until they confirm.
+```bash
+[ -n "${COVAULT_PERSON:-}" ] && grep -iE "($(echo $DOMAINS | tr ' ' '|'))" \
+  "$COVAULT_PERSON/_index.md" 2>/dev/null
+```
 
-If neither condition fires, proceed to PHASE 2.
+For each hit, `cat` that specific file. Do not bulk-load.
 
----
+**Stopping conditions:**
+- Open conflict in domain → STOP, ask user.
+- User-authored note contradicts the task → STOP, quote it, ask user.
 
-## PHASE 2 — PROPOSE
+### PHASE 2 — PROPOSE
 
 Announce: `[co-vault: PHASE 2/5 — PROPOSE]`
 
-**Before writing**, read the schema and example:
+Read schemas:
 ```bash
 cat "$COVAULT_PATH/.covault/schemas/proposal.md"
 cat "$COVAULT_PATH/.covault/examples/proposal.md"
 ```
 
-Then write a proposal file. **Filename**:
-`proposals/<timestamp>-<slug>.md` (apply collision rule).
+Write `proposals/<timestamp>-<slug>.md` matching the schema. Commit.
+Print path. Wait for confirmation if `estimated_effort` ≠ `small`.
 
-Match the schema exactly. All required frontmatter fields. Body sections
-in the order the schema specifies. Use the example as a template.
-
-After writing, commit:
-```bash
-git -C "$COVAULT_PATH" add . \
-  && git -C "$COVAULT_PATH" commit -q -m "propose: <slug>"
-```
-
-Then:
-1. Print the proposal path to the user.
-2. If `estimated_effort` is `medium` or `large`, WAIT for explicit
-   confirmation: "yes", "go", "proceed", "ok", or equivalent in any
-   language. Do NOT start PHASE 3 until you have it.
-3. If `small`, proceed immediately.
-
----
-
-## PHASE 3 — EXECUTE
+### PHASE 3 — EXECUTE
 
 Announce: `[co-vault: PHASE 3/5 — EXECUTE]`
 
-Do the actual work on the project code (NOT inside the vault). Rules:
+Do the work in project code (NOT in vaults). Stay inside the proposal
+scope. Reference the proposal in commit messages. If contradiction found,
+jump to PHASE 5. If user says "abort", jump to PHASE 4 with `status: aborted`.
 
-1. Stay strictly inside the scope declared in the proposal. If you must
-   touch something in `Out of scope`, STOP, update the proposal, and
-   re-confirm with the user.
-2. Reference the proposal in commit messages on the project repo:
-   `<type>(<scope>): <subject>  [co-vault: <proposal-filename>]`
-3. If you discover something that contradicts a `user` note, STOP
-   immediately and jump to PHASE 5.
-4. If the user says "abort", jump to PHASE 4 with `status: aborted`.
-
----
-
-## PHASE 4 — REPORT
+### PHASE 4 — REPORT
 
 Announce: `[co-vault: PHASE 4/5 — REPORT]`
 
-**Before writing**, read the schemas you'll need:
-```bash
-cat "$COVAULT_PATH/.covault/schemas/report.md"
-cat "$COVAULT_PATH/.covault/examples/report.md"
-# If you'll create new facts:
-cat "$COVAULT_PATH/.covault/schemas/fact.md"
-cat "$COVAULT_PATH/.covault/examples/fact.md"
-```
+Read schemas (`report.md`, `fact.md`). Write `reports/<same-name>.md` and
+one atomic file in `facts/` per genuinely new piece of knowledge. Commit.
 
-Write the report. **Filename**: `reports/<same-name-as-proposal>.md`.
-Match the schema exactly.
+If no contradiction found, proceed to **PERSON LEARNING** (below) and
+then announce `[co-vault: PHASE 5/5 — skipped, no conflict]` to end the loop.
 
-**For each genuinely new piece of knowledge** discovered during EXECUTE,
-create a separate atomic file in `facts/`. **One claim per file.** If you
-wrote two claims in one file, split them into two.
-
-After all writes, commit:
-```bash
-git -C "$COVAULT_PATH" add . \
-  && git -C "$COVAULT_PATH" commit -q -m "report: <slug> (<status>)"
-```
-
-If no contradiction was found, announce:
-`[co-vault: PHASE 5/5 — skipped, no conflict]`
-The loop is done.
-
----
-
-## PHASE 5 — REQUEST_REVIEW (only if contradiction found)
+### PHASE 5 — REQUEST_REVIEW (only if contradiction)
 
 Announce: `[co-vault: PHASE 5/5 — REQUEST_REVIEW]`
 
-Trigger conditions (any of):
-- A `user`-authored note states X and you observed not-X.
-- A `user`-authored note forbids approach Y and the task requires Y.
-- Two `user`-authored notes contradict each other.
+Read schema (`conflict.md`). Write `conflicts/<timestamp>-<slug>.md` matching
+the schema. Commit. Print path. State: "I have stopped work on this task.
+Please resolve the conflict and tell me how to proceed." Stop.
 
-When triggered:
-1. Stop all work in the affected domain immediately.
-2. Read the schema:
-   ```bash
-   cat "$COVAULT_PATH/.covault/schemas/conflict.md"
-   cat "$COVAULT_PATH/.covault/examples/conflict.md"
-   ```
-3. Write the conflict file. **Filename**: `conflicts/<timestamp>-<slug>.md`.
-   Match the schema exactly.
-4. Commit:
-   ```bash
-   git -C "$COVAULT_PATH" add . \
-     && git -C "$COVAULT_PATH" commit -q -m "conflict: <slug>"
-   ```
-5. Print the conflict path.
-6. State plainly: "I have stopped work on this task. Please resolve the
-   conflict and tell me how to proceed."
-7. Do not work on anything else in the same domain until the user
-   confirms resolution.
+---
+
+## PERSON LEARNING — runs after PHASE 4 (skipped on conflict/abort)
+
+Only runs if `COVAULT_PERSON` is active. This is where the person vault
+grows organically.
+
+Ask yourself these four questions:
+
+1. **Did the user correct me on something during this task?**
+   → Write a `corrections/<topic>.md` matching `correction.md` schema.
+2. **Did I observe a stable preference I haven't recorded?**
+   → Check `_index.md` for an existing matching preference. If exists,
+   update `last_confirmed` and increment evidence. If not, write
+   `preferences/<topic>.md`.
+3. **Did I observe a behavioral pattern (3+ instances)?**
+   → Same: check index, update or create `patterns/<topic>.md`.
+4. **Did the person's life/work context change?**
+   → Update or create `context/<topic>.md`.
+
+**Strict criteria for writing a new note** — all must be true:
+
+- The fact is **durable** (not specific to this one session).
+- The fact is **non-obvious** (not "user uses a computer").
+- The fact has **utility** (would change agent behavior in the future).
+- A similar fact does not already exist in the index — if it does,
+  **update** instead of duplicating.
+
+After ANY write to the person vault, run:
+```bash
+"$COVAULT_REPO/bin/rebuild-index.sh" "$COVAULT_PERSON"
+git -C "$COVAULT_PERSON" add . && git -C "$COVAULT_PERSON" commit -q -m "person: <slug>"
+```
+
+(`COVAULT_REPO` is the path to the cloned co-vault repo. If unset,
+fall back to `~/.claude/skills/co-vault/bin/rebuild-index.sh`.)
+
+If you can't decide whether something is worth recording: **don't**.
+Silence is better than vault rot.
 
 ---
 
 ## HARD RULES — violating any of these is a failure of the skill
 
 1. **Never edit a file with `author: user`.** Open a conflict instead.
-2. **Never delete a file.** Move it to `_archive/` and add a one-line top
-   comment explaining why.
-3. **Never write a note without reading its schema first** in the current
-   session. Schema files live in `.covault/schemas/<type>.md`.
-4. **Never write a note without complete frontmatter.** Required fields
-   come from the schema.
-5. **Never write more than one claim per `facts/` file.** Split it.
-6. **Never silently supersede a fact.** Old fact gets `superseded_by:
-   [[new-fact]]` in its frontmatter and moves to `_archive/`. Do this
-   only for `author: agent` facts. Never for `agent+reviewed` or `user`.
-7. **Never auto-consolidate.** Consolidation only happens when the user
-   runs the REVIEW command.
-8. **Never proceed past an open conflict in the affected domain.**
-9. **Never copy text between notes.** Use `[[wikilinks]]`. Duplication is
-   how the vault rots.
-10. **Never read or write outside `$COVAULT_PATH`** during the loop,
-    except for project code in PHASE 3.
-11. **Never skip the phase announcement.**
-12. **Never operate on a vault with mismatched `schema_version`.**
+2. **Never delete a file.** Move to `_archive/` with a top-comment reason.
+3. **Never write a note without reading its schema first** in the current session.
+4. **Never write a note without complete frontmatter.**
+5. **Never write more than one claim per `facts/` file** (project vault).
+6. **Never write more than one topic per file** (person vault).
+7. **Never silently supersede.** Use `superseded_by:` and move old to `_archive/`.
+8. **Never auto-consolidate.** Only on user-triggered REVIEW.
+9. **Never proceed past an open conflict in the affected domain.**
+10. **Never copy text between notes.** Use `[[wikilinks]]`.
+11. **Never read or write outside the vaults** during the loop, except project code in PHASE 3.
+12. **Never skip the phase announcement.**
+13. **Never operate on a vault with mismatched `schema_version`.**
+14. **Never bulk-load the person vault.** Use the index, fetch on demand.
+15. **Never write to the person vault without rebuilding the index afterwards.**
+16. **Never duplicate a note.** Search the index first, update if exists.
 
 ---
 
-## ABORT command — when the user says "abort"
+## ABORT command — when the user says "abort", "stop", "cancel"
 
-If the user says "abort", "stop", or "cancel" mid-task:
-1. Immediately stop PHASE 3 work.
-2. Jump to PHASE 4 with `status: aborted`.
-3. In "What actually happened", document what was done, what was left
-   undone, and any half-finished state in project code that needs cleanup.
-4. Commit and stop.
-
-"Abort" is not "pause". Once aborted, the loop is over. Starting again
-means a new PHASE 1.
+Stop PHASE 3 immediately. Jump to PHASE 4 with `status: aborted`.
+Document what was done, what was left undone, what needs cleanup.
+Commit. Stop. Do NOT run PERSON LEARNING after an abort.
 
 ---
 
 ## REVIEW command — only when the user explicitly says it
 
-Trigger phrases: "review the vault", "co-vault review", "vault status".
+Trigger phrases: "review the vault", "co-vault review", "vault status",
+"review the project vault", "review the person vault".
 
+Determine which vault(s) the user means; if unclear, do both.
+
+### Project vault review
 ```bash
 cd "$COVAULT_PATH"
-
-echo "=== OPEN CONFLICTS (these block work) ==="
+echo "=== OPEN CONFLICTS ==="
 find conflicts -name '*.md' 2>/dev/null | while read f; do
   grep -qE '^status:[[:space:]]*open[[:space:]]*$' "$f" && echo "  $f"
 done
-
 echo
-echo "=== STALE PROPOSALS (>7 days, no matching report) ==="
+echo "=== STALE PROPOSALS (>7 days, no report) ==="
 find proposals -name '*.md' -mtime +7 2>/dev/null | while read p; do
   base=$(basename "$p")
   [ ! -f "reports/$base" ] && echo "  $p"
 done
-
 echo
-echo "=== NOTES MISSING FRONTMATTER ==="
-find . -name '*.md' \
-  -not -path './_archive/*' \
-  -not -path './.covault/*' \
-  -not -path './.git/*' | while read f; do
-  head -1 "$f" | grep -q '^---$' || echo "  $f"
-done
-
-echo
-echo "=== AGENT FACTS FROM LAST 7 DAYS (review candidates for promotion) ==="
+echo "=== AGENT FACTS LAST 7 DAYS (promotion candidates) ==="
 find facts -name '*.md' -mtime -7 2>/dev/null | while read f; do
   grep -qE '^author:[[:space:]]*agent[[:space:]]*$' "$f" && echo "  $f"
 done
+```
 
+### Person vault review
+```bash
+cd "$COVAULT_PERSON"
+echo "=== INDEX SIZE ==="
+wc -l _index.md
 echo
-echo "=== UNLINKED NOTES (archive candidates) ==="
-find facts decisions domains -name '*.md' 2>/dev/null | while read f; do
-  base=$(basename "$f" .md)
-  if ! grep -rq "\[\[.*$base" --include='*.md' \
-       --exclude-dir=.covault --exclude-dir=.git --exclude-dir=_archive .; then
-    echo "  $f"
+echo "=== STALE NOTES (last_confirmed >180 days ago) ==="
+find . -name '*.md' -not -path './_archive/*' -not -path './.covault/*' \
+  -not -path './.git/*' | while read f; do
+  last=$(grep -E '^last_confirmed:|^last_observed:' "$f" 2>/dev/null \
+    | head -1 | awk '{print $2}')
+  [ -z "$last" ] && continue
+  if [ "$(date -d "$last" +%s 2>/dev/null || echo 0)" -lt \
+       "$(date -d '180 days ago' +%s)" ]; then
+    echo "  $f (last confirmed: $last)"
   fi
+done
+echo
+echo "=== LOW-CONFIDENCE NOTES ==="
+find . -name '*.md' 2>/dev/null | while read f; do
+  grep -qE '^confidence:[[:space:]]*low[[:space:]]*$' "$f" && echo "  $f"
 done
 ```
 
-Present the output as numbered action items. **Do not act on any of them
-yourself.** The user decides what to archive, promote, or fix.
+Present output as numbered action items. **Do not act on them yourself.**
+The user decides what to archive, promote, or fix.
 
 ---
 
-## BOOTSTRAP — only when vault is uninitialized or user says "bootstrap co-vault"
+## BOOTSTRAP — when vaults are uninitialized
 
-A correctly initialized vault always has `.covault/manifest.yaml`,
-`.covault/schemas/`, and `.covault/examples/` populated. Recreating these
-by hand is error-prone. The right way to bootstrap is to run `install.sh`
-from the co-vault repo, which copies the vault skeleton.
+Tell the user this exact instruction:
 
-```bash
-# Tell the user this exact instruction:
-```
-
-> To bootstrap a vault, run the installer from the co-vault repo:
+> To bootstrap a project vault, run from the co-vault repo:
 >
 > ```bash
-> git clone https://github.com/Cosmic-Game-studios/co-vault.git /tmp/co-vault
-> /tmp/co-vault/install.sh "$COVAULT_PATH"
+> ./install.sh "$COVAULT_PATH"
 > ```
 >
-> This creates the manifest, schemas, examples, and empty content folders,
-> and makes the first git commit. Then open `index.md` and fill in your
-> stack, rules, and current focus. I will not start any task until you
-> confirm `index.md` is filled in.
+> To bootstrap a person vault (one per human, cross-project):
+>
+> ```bash
+> ./install.sh --person "$COVAULT_PERSON"
+> ```
+>
+> After bootstrap, edit `index.md` (project) or `identity/basic.md`
+> (person) before starting work.
 
-After bootstrap, wait for the user to confirm that `index.md` is filled in.
-Do not begin any work until then.
+Wait for the user to confirm bootstrap is complete.
 
 ---
 
 ## END OF SKILL
 
 If you reached this point without violating any hard rule, you are
-operating co-vault correctly. If you are uncertain at any point which
-phase you are in, restart from PHASE 1 — re-running ORIENT is cheap;
-acting on stale context is expensive.
+operating co-vault correctly. If uncertain which phase you are in, restart
+from PHASE 1 — re-running ORIENT is cheap; acting on stale context is
+expensive.
