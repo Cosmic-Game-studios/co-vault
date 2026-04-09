@@ -1,0 +1,98 @@
+# co-vault PERSON manifest
+# This vault stores knowledge about ONE PERSON across all their projects.
+# It is cross-project and cross-agent. Any agent can read and contribute.
+#
+# Read on every session start. Read .covault/schemas/<type>.md before
+# writing any note of that type.
+
+covault_version: "0.4"
+schema_version: 1
+scope: person                                # vs "project" for project vaults
+vault_name: "<set during bootstrap>"
+
+# Authority hierarchy. In a person vault the default author is `agent`
+# (the agent observes and writes), but the user can always override.
+authority_hierarchy:
+  - user             # immutable to agents
+  - agent+reviewed   # immutable to agents
+  - agent            # mutable, default for new observations
+
+# Conventions
+conventions:
+  timestamp_format: "%Y-%m-%dT%H:%MZ"
+  filename_format: "<canonical-slug>.md or <YYYY-MM-DD>-<slug>.md"
+  slug_rules: "lowercase, hyphenated, descriptive"
+  one_topic_per_file: true
+  required_summary_field: true               # every note needs `summary:` for indexing
+  index_file: _index.md                       # always present, agent-rebuilt
+  max_note_length_lines: 50                   # keep notes short for fast loading
+
+# Folders
+folders:
+  _index.md:
+    note_type: index
+    description: "Auto-rebuilt by the agent. One line per note with its summary."
+    typical_author: agent
+    schema: .covault/schemas/index.md
+    rebuild_with: bin/rebuild-index.sh
+
+  identity/:
+    note_type: identity
+    description: "Stable facts about who the person is. Mostly user-authored."
+    typical_author: user
+    schema: .covault/schemas/identity.md
+    example: .covault/examples/identity.md
+
+  preferences/:
+    note_type: preference
+    description: "How the person likes things done. Agent-observed, user-correctable."
+    typical_author: agent
+    schema: .covault/schemas/preference.md
+    example: .covault/examples/preference.md
+
+  patterns/:
+    note_type: pattern
+    description: "Observed behavior — how the person actually works, prompts, communicates."
+    typical_author: agent
+    schema: .covault/schemas/pattern.md
+    example: .covault/examples/pattern.md
+
+  corrections/:
+    note_type: correction
+    description: "Things the agent got wrong about the person and was corrected on."
+    typical_author: agent
+    schema: .covault/schemas/correction.md
+    example: .covault/examples/correction.md
+    priority: high                            # always loaded into context
+
+  context/:
+    note_type: context
+    description: "Life and work context that affects collaboration (job, projects, situation)."
+    typical_author: agent
+    schema: .covault/schemas/context.md
+    example: .covault/examples/context.md
+
+  _archive/:
+    note_type: any
+    description: "Soft-deleted notes."
+    typical_author: any
+
+# Loading strategy — token efficiency rules
+loading:
+  on_session_start:
+    - .covault/manifest.yaml
+    - _index.md
+    - corrections/*.md                        # always load all corrections
+    - identity/basic.md                       # load core identity
+  on_demand:
+    - preferences/<topic>.md                  # only when relevant to current task
+    - patterns/<topic>.md
+    - context/<topic>.md
+  never_bulk_load:
+    - "*"                                     # never `cat *` — always specific files
+
+# Maintenance — agent runs these on schedule
+maintenance:
+  rebuild_index_after: every_write
+  decay_check: monthly                        # mark unconfirmed facts as stale
+  archive_threshold_days: 365                 # facts not confirmed in 1 year → archive

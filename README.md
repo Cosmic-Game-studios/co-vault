@@ -10,10 +10,15 @@
 
 Your AI coding agent forgets everything between sessions. The memory features that exist (Claude Code's `~/.claude/`, Cursor rules, etc.) are private to that one tool, can be silently overwritten, and treat your hard-won decisions as equal to the agent's first-draft guesses.
 
-co-vault is a [Claude Code](https://claude.com/claude-code) skill that turns an [Obsidian](https://obsidian.md) vault into a **multiplayer memory system**:
+co-vault is a [Claude Code](https://claude.com/claude-code) skill that turns [Obsidian](https://obsidian.md) folders into **two kinds of multiplayer memory**:
+
+- 🗂️ **Project vault** — facts, decisions, and history about one specific project. One per project.
+- 👤 **Person vault** — durable knowledge about *you* (how you prompt, what you prefer, what you've corrected the agent on). One per human, shared across **all** your projects and **all** your agents.
+
+Both are just folders of Markdown:
 
 - 📂 **One folder of Markdown** — works on any OS, any agent, any device.
-- 🧠 **Self-describing vault** — manifest + schemas live next to the data, so any LLM can pick it up without prior knowledge.
+- 🧠 **Self-describing vaults** — manifest + schemas live next to the data, so any LLM can pick it up without prior knowledge.
 - 🔒 **Your notes are immutable** — agents can read them, cite them, but never edit them.
 - 🛑 **Conflicts stop the agent** — when its observations contradict your decisions, it asks instead of overwriting.
 - 🔁 **5-phase loop on every task** — ORIENT → PROPOSE → EXECUTE → REPORT → REQUEST_REVIEW. No silent steps.
@@ -125,6 +130,70 @@ The `author:` field is the entire authority system. When the agent reads a note,
 
 ---
 
+## Two vault scopes: project + person
+
+co-vault has two distinct kinds of vault. They use the same machinery (manifest, schemas, examples, author hierarchy) but solve different problems.
+
+### Project vault (`COVAULT_PATH`)
+
+One per project. Lives wherever you want — usually `~/Vaults/<project-name>/`.
+
+Stores: decisions, facts, proposals, reports, conflicts, domains. Everything that is true about *that one codebase*. Cleared when the project ends.
+
+Workflow: the 5-phase loop runs on every task. The agent reads the project vault before touching code, writes a proposal, executes, reports, and surfaces conflicts.
+
+### Person vault (`COVAULT_PERSON`)
+
+**One per human.** Lives in `~/.covault/person/` by default. **Shared across every project you ever work on, with every agent you ever use.**
+
+Stores: identity, preferences, patterns, corrections, context. Everything the agent learns about *you* — how you prompt, what tone you want, what you've corrected the agent on, which technical preferences are stable across all your projects.
+
+Workflow: loaded once per session. The agent reads the index (small), all corrections (priority), and your basic identity. It fetches specific preference/pattern/context files only when relevant to the current task. After every meaningful task, it asks itself *"did I learn anything durable about the user?"* — if yes, it writes a new note and rebuilds the index.
+
+```
+~/.covault/person/
+├── .covault/
+│   ├── manifest.yaml         # scope: person, schema_version: 1
+│   ├── schemas/              # 6 schemas: identity, preference, pattern, correction, context, index
+│   └── examples/             # 5 filled-in examples
+├── _index.md                 # auto-rebuilt by bin/rebuild-index.sh
+├── identity/                 # who you are (mostly user-authored)
+├── preferences/              # how you like things (agent-observed)
+├── patterns/                 # how you actually work (agent-observed)
+├── corrections/              # things the agent got wrong (priority loaded)
+├── context/                  # life/work context (job, projects)
+└── _archive/
+```
+
+### Why split them?
+
+Because they have completely different lifecycles, sizes, and trust models.
+
+A project vault is small and bounded — it dies when the project does. A person vault grows over years and follows you between tools. A project vault is mostly user-authored (your decisions are law). A person vault is mostly agent-authored (the agent observes, you correct). Mixing them would mean the agent's casual observations about your prompt style would sit next to your hard architectural decisions for a specific project — and one of the two would inevitably contaminate the other.
+
+### How they work together
+
+When you start a new task in a project, both vaults activate:
+
+1. **Session start**: agent loads person vault index, all corrections, and your identity. ~3000 tokens.
+2. **Per task**: agent runs the 5-phase loop on the project vault as normal. During PHASE 1 (ORIENT), it also greps the person vault index for hits matching the current task's domain — if it finds any, it loads those specific preference/pattern files.
+3. **End of task**: agent runs PERSON LEARNING — did I learn anything new about the user during this task? If yes, write to the person vault and rebuild the index. If no, do nothing.
+
+The result: every project benefits from everything the agent has ever learned about you, without any project's specifics leaking into other projects.
+
+### Token efficiency for large person vaults
+
+The person vault is designed to grow without burning context:
+
+- **Every note has a `summary:` field** in its frontmatter — one line describing the note's content.
+- **The `_index.md` is auto-rebuilt** after every write. It lists every note with its summary, grouped by folder. A vault with 500 notes produces an index of ~150 lines.
+- **The agent reads the index, not the notes.** Only when the index suggests a hit does it `cat` a specific file.
+- **Notes are bounded**: 30–50 lines max per note. One topic per file.
+- **Stale notes decay**: REVIEW surfaces notes that haven't been confirmed in 180+ days. You decide whether to refresh, archive, or delete.
+- **Total session overhead**: ~3000 tokens for the bulk-loaded parts (manifest + index + corrections + identity), plus ~500–1500 tokens for the on-demand lookups during a task. Acceptable even for vaults with hundreds of notes.
+
+---
+
 ## What makes this different from everything else
 
 | | Claude Code Memory | Cursor Rules | RAG / Vector DB | MCP Memory Tool | **co-vault** |
@@ -154,19 +223,24 @@ Use both.
 git clone https://github.com/Cosmic-Game-studios/co-vault.git
 cd co-vault
 
-# 2. Run the installer (creates a vault and installs the skill)
+# 2a. Bootstrap a project vault (one per project)
 ./install.sh ~/Vaults/my-project
-
-# 3. Set the env var (add to ~/.zshrc or ~/.bashrc)
 export COVAULT_PATH="$HOME/Vaults/my-project"
 
-# 4. Edit ~/Vaults/my-project/index.md to fill in your stack, rules, focus.
-#    This becomes your agent's ground truth.
+# 2b. Bootstrap a person vault (one per human, shared across all projects)
+./install.sh --person ~/.covault/person
+export COVAULT_PERSON="$HOME/.covault/person"
 
-# 5. Start Claude Code in your project. The skill activates automatically.
+# 3. Edit the seed files
+#    - $COVAULT_PATH/index.md       — your project's stack, rules, focus
+#    - $COVAULT_PERSON/identity/basic.md  — who you are
+
+# 4. Add the env vars to ~/.zshrc or ~/.bashrc so they persist
+
+# 5. Start Claude Code in your project. Both vaults activate automatically.
 ```
 
-That's it. From now on, every task in this project goes through the loop.
+That's it. The project vault gates every task through the 5-phase loop. The person vault loads on session start and learns about you over time.
 
 ---
 
@@ -339,9 +413,12 @@ Each developer points `COVAULT_PATH` at the same shared git repo. The pre-commit
 - [x] Author hierarchy with hard `user` immutability
 - [x] Self-describing vault (`.covault/manifest.yaml` + schemas + examples)
 - [x] Schema versioning with refusal-on-mismatch
+- [x] **Person vault (cross-project, cross-agent)** with auto-rebuilt index
+- [x] Token-efficient loading (index + on-demand fetch, not bulk)
+- [x] PERSON LEARNING phase after each task
 - [x] Pre-commit hook for git-layer enforcement
-- [x] Manual REVIEW command
-- [x] BOOTSTRAP for new projects
+- [x] Manual REVIEW command (project + person)
+- [x] BOOTSTRAP for new projects and new person vaults
 - [x] ABORT command for mid-task cancellation
 - [ ] Cursor `.cursorrules` port
 - [ ] Aider conventions port
