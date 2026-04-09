@@ -1,12 +1,20 @@
-# co-vault PROJECT manifest — v0.6
+# co-vault PROJECT manifest — v0.7
 #
 # This vault is self-describing. Agents read this file once per session and
 # the relevant schema (.covault/schemas/<type>.md) before each write.
 #
 # The vault is organized around the human memory systems framework
 # (Tulving 1972, Squire 2004): each folder maps to a known memory type.
+#
+# v0.7 enhancements (inspired by DeepResearch):
+#   - Structured reasoning protocol (Deep Read) in ORIENT
+#   - Change-type classification for proposals (parametric → architectural)
+#   - Causal hypothesis + alternatives considered in proposals
+#   - Reflection protocol with causal error analysis in reports
+#   - Anti-pattern tracking in facts
+#   - Per-domain and per-change-type calibration
 
-covault_version: "0.6"
+covault_version: "0.7"
 schema_version: 2
 scope: project
 vault_name: "<set during bootstrap>"
@@ -37,6 +45,66 @@ memory_systems:
   working:
     description: "Current session context — never written to disk"
     folders: []
+
+# Change types — classify every proposal (inspired by DeepResearch mutation types)
+# Risk level determines confirmation behavior alongside estimated_effort.
+change_types:
+  parametric:
+    level: 1
+    risk: low
+    description: "Change a value, config, or threshold"
+  structural_addition:
+    level: 2
+    risk: medium
+    description: "Add new function, module, endpoint"
+  structural_removal:
+    level: 2
+    risk: medium
+    description: "Remove dead code or unnecessary complexity"
+  structural_replacement:
+    level: 2
+    risk: high
+    description: "Replace one implementation with a better one"
+  integration:
+    level: 2
+    risk: medium
+    description: "Connect two existing components"
+  architectural:
+    level: 3
+    risk: high
+    description: "Design and build a new component from scratch"
+
+# Reasoning protocol — mandatory steps before action (DeepResearch R1-R3)
+reasoning_protocol:
+  deep_read:
+    phase: ORIENT
+    steps:
+      - problem_decomposition
+      - constraint_inventory
+      - causal_hypothesis
+      - approach_candidates
+  hypothesis:
+    phase: HYPOTHESIZE
+    required_sections:
+      - what              # root cause / core mechanism
+      - why_i_believe     # evidence from ORIENT
+      - falsification     # what would prove this wrong
+  reflection:
+    phase: VERIFY
+    required_sections:
+      - surprises
+      - causal_error_analysis
+      - model_update
+      - anti_pattern_candidates
+
+# Fact subtypes — distinguish observations from anti-patterns
+fact_types:
+  observation:
+    description: "Something that IS true about the system"
+    default: true
+  anti-pattern:
+    description: "An approach that was tried and failed — loaded in ORIENT to prevent repetition"
+    loaded_in: ORIENT
 
 # Conventions
 conventions:
