@@ -1,22 +1,37 @@
 # co-vault
 
-**A shared knowledge base between you and your AI coding agents — where your notes are law.**
+> **A shared knowledge base between you and your AI coding agents — where your notes are law.**
 
-co-vault is a [Claude Code](https://claude.com/claude-code) skill (also works with Cursor, Aider, or any agent that can read files) that turns an [Obsidian](https://obsidian.md) vault into a multiplayer memory system. You write decisions. Your agent writes plans, reports, and discovered facts. When the agent finds a contradiction between what it observed and what you decided, **it stops and asks you** instead of silently overwriting your knowledge.
-
-> One vault. Many agents. One human in charge.
+![status: alpha](https://img.shields.io/badge/status-alpha-orange) ![license: MIT](https://img.shields.io/badge/license-MIT-blue) ![works with: Claude Code, Cursor, Aider](https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20Aider-purple)
 
 ---
 
-## The problem
+## TL;DR
 
-If you've used AI coding agents on a real project for more than a week, you know this pain:
+Your AI coding agent forgets everything between sessions. The memory features that exist (Claude Code's `~/.claude/`, Cursor rules, etc.) are private to that one tool, can be silently overwritten, and treat your hard-won decisions as equal to the agent's first-draft guesses.
 
-- **The agent forgets.** Every new session it re-explores the codebase, re-learns your conventions, re-suggests the dependency you already rejected.
-- **The agent overrides you.** You decided last Tuesday "we use raw SQL, no ORM." Today the agent cheerfully suggests Prisma. Again.
-- **The agent's memory is locked in.** Claude Code's memory lives in `~/.claude/`. Cursor's lives somewhere else. ChatGPT has its own. You can't share knowledge between tools, and you can't take it with you when a better agent comes out next month.
-- **You can't see what it learned.** Auto-memory features write notes in the background. You only find out the agent "remembered" something wrong when it bites you.
-- **Your decisions and the agent's guesses look the same.** A note saying "use refresh tokens" written by you (deliberate, after research) is indistinguishable from one written by the agent (a guess from a Stack Overflow snippet). The agent treats them as equally valid. They are not.
+co-vault is a [Claude Code](https://claude.com/claude-code) skill that turns an [Obsidian](https://obsidian.md) vault into a **multiplayer memory system**:
+
+- 📂 **One folder of Markdown** — works on any OS, any agent, any device.
+- 🧠 **Self-describing vault** — manifest + schemas live next to the data, so any LLM can pick it up without prior knowledge.
+- 🔒 **Your notes are immutable** — agents can read them, cite them, but never edit them.
+- 🛑 **Conflicts stop the agent** — when its observations contradict your decisions, it asks instead of overwriting.
+- 🔁 **5-phase loop on every task** — ORIENT → PROPOSE → EXECUTE → REPORT → REQUEST_REVIEW. No silent steps.
+- 🔌 **Tool-agnostic** — works with Claude Code today, Cursor/Aider/anything-with-files tomorrow.
+
+If you've ever yelled at your AI for the third time in a week *"I told you we don't use Prisma"*, this is for you.
+
+---
+
+## The problem, in five concrete pains
+
+If you've used AI coding agents on a real project for more than a week, you've felt these:
+
+1. **The agent forgets.** New session, blank slate. It re-explores the codebase, re-suggests the dependency you already rejected, re-asks about your conventions.
+2. **The agent overrides you.** Tuesday: you decide *"raw SQL only, no ORM."* Thursday: the agent cheerfully proposes Prisma. Again.
+3. **Memory is locked into one tool.** Claude Code's lives in `~/.claude/`. Cursor's lives somewhere else. ChatGPT has its own. You can't share knowledge between agents, and you lose it when a better one ships next month.
+4. **You can't see what the agent learned.** Auto-memory writes notes silently. You only find out it "remembered" something wrong when it bites you.
+5. **Your decisions and the agent's guesses look the same.** A note saying "use refresh tokens" written by you (deliberate, after research) is indistinguishable from one written by the agent (a guess from a Stack Overflow snippet). The agent treats them as equally valid. They are not.
 
 co-vault fixes all five.
 
@@ -28,12 +43,12 @@ co-vault fixes all five.
                     ┌─────────────────────────┐
                     │   Your Obsidian vault   │
                     │                         │
-                    │   index.md  ◄─── you    │
-                    │   decisions/ ◄── you    │  ← LAW. Agents can't edit.
-                    │   facts/    ◄── agent   │  ← Agent observations.
-                    │   proposals/◄── agent   │  ← Plans before action.
-                    │   reports/  ◄── agent   │  ← What actually happened.
-                    │   conflicts/◄── agent   │  ← BLOCKS work until you decide.
+                    │   index.md   ◄── you    │ ◄── LAW. Agents can't edit.
+                    │   decisions/ ◄── you    │
+                    │   facts/     ◄── agent  │ ◄── Atomic observations.
+                    │   proposals/ ◄── agent  │ ◄── Plans before action.
+                    │   reports/   ◄── agent  │ ◄── What actually happened.
+                    │   conflicts/ ◄── agent  │ ◄── BLOCKS work until you resolve.
                     └────────────┬────────────┘
                                  │
                 ┌────────────────┼────────────────┐
@@ -45,89 +60,136 @@ co-vault fixes all five.
           └──────────┘    └──────────┘    └──────────┘
 ```
 
-The vault is just a folder of Markdown files. Anything that can read files can use it. You can edit it from your phone in bed.
+The vault is just a folder of Markdown files. Anything that can read files can use it. You can edit it from your phone in bed, push it to a private GitHub repo, or hand it to a teammate.
 
 ---
 
-## What makes it different from Claude Code's built-in memory
+## How a co-vault note actually looks
 
-| | Claude Code Memory | co-vault |
-|---|---|---|
-| Storage location | `~/.claude/projects/<x>/memory/` | Anywhere — your vault folder |
-| Who can write | Claude Code only | Any agent + you |
-| Who can read | Claude Code only | Any agent + you, on any device |
-| Authority model | Flat — every note is equal | Hierarchical — `user` > `agent+reviewed` > `agent` |
-| Conflict handling | Agent silently merges (Auto-Dream) | Agent **stops** and asks |
-| Consolidation | Background, automatic, opaque | Manual, user-triggered, auditable |
-| Survives tool change | No | Yes — vault is yours |
-| Works offline / on phone | No | Yes (Obsidian Mobile) |
-| You can grep/query it | Limited | Full Markdown + Dataview + Obsidian graph |
+This is the entire trick. Every note has an `author:` field in its frontmatter:
 
-co-vault is not a replacement for `CLAUDE.md`. They solve different problems. `CLAUDE.md` is *"how the agent should behave."* co-vault is *"what is true about this project, and what did the agent do today."*
+**A user-authored decision (immutable to agents):**
+```markdown
+---
+type: decision
+author: user
+domain: auth
+created: 2026-02-14T09:30Z
+---
+
+## Decision
+We use stateless JWT, 15-minute access tokens, no refresh tokens.
+
+## Why
+Deploys are stateless containers. No server-side session store.
+Refresh tokens would require Redis, which we explicitly don't want
+in this project.
+
+## Status
+active
+```
+
+**An agent-authored fact (the agent can edit this freely):**
+```markdown
+---
+type: fact
+author: agent
+domain: auth
+created: 2026-04-09T14:32Z
+discovered_in: "[[reports/2026-04-09-1430-add-login-ui]]"
+confidence: high
+---
+
+## Claim
+The /login endpoint returns 401 instead of 403 for unknown users,
+which leaks user existence.
+
+## Evidence
+Tested with curl against the dev environment. See report for full trace.
+
+## Implication
+Should return 401 for both cases. See [[decisions/2026-02-14-stateless-jwt]].
+```
+
+**An agent fact that has been promoted by you (now immutable):**
+```markdown
+---
+type: fact
+author: agent+reviewed
+reviewed_by: ronald
+reviewed_at: 2026-04-10
+---
+```
+
+The `author:` field is the entire authority system. When the agent reads a note, it knows whether it can modify it (`agent`) or only cite it (`user` / `agent+reviewed`).
 
 ---
 
-## Quickstart (60 seconds)
+## What makes this different from everything else
+
+| | Claude Code Memory | Cursor Rules | RAG / Vector DB | MCP Memory Tool | **co-vault** |
+|---|---|---|---|---|---|
+| Storage | `~/.claude/` | `.cursorrules` | Embedding store | API-managed | Your folder |
+| Who can write | Claude only | You only | Indexer | Agent only | **You + any agent** |
+| Cross-tool | ❌ | ❌ | Sometimes | One protocol | ✅ |
+| You can edit on phone | ❌ | Manual | ❌ | ❌ | ✅ via Obsidian Mobile |
+| Authority hierarchy | Flat | N/A (static) | Flat | Flat | ✅ `user` > `agent+reviewed` > `agent` |
+| Conflict handling | Silent merge (Auto-Dream) | N/A | Top-K wins | Agent decides | ✅ Agent **stops** |
+| Auditable changes | Limited | Yes (git) | ❌ | ❌ | ✅ Full git history |
+| Survives tool change | ❌ | ❌ | Maybe | ❌ | ✅ |
+| Setup cost | None | Low | High | Medium | Low (60s) |
+
+co-vault is **not a replacement** for `CLAUDE.md` / `.cursorrules`. They solve different problems:
+- `CLAUDE.md` / `.cursorrules` = *"how the agent should behave"* (style, conventions, always loaded)
+- co-vault = *"what is true about this project, and what did the agent do today"* (facts, decisions, history, queried on demand)
+
+Use both.
+
+---
+
+## Quickstart — 60 seconds
 
 ```bash
-# 1. Clone this repo and install the skill
+# 1. Clone this repo
 git clone https://github.com/Cosmic-Game-studios/co-vault.git
-mkdir -p ~/.claude/skills/co-vault
-cp co-vault/SKILL.md ~/.claude/skills/co-vault/
+cd co-vault
 
-# 2. Create a vault for your project
+# 2. Run the installer (creates a vault and installs the skill)
+./install.sh ~/Vaults/my-project
+
+# 3. Set the env var (add to ~/.zshrc or ~/.bashrc)
 export COVAULT_PATH="$HOME/Vaults/my-project"
 
-# 3. Start Claude Code in your project, then say:
-#    "bootstrap co-vault"
-#
-# The agent will create the folder structure, an empty index.md,
-# and the first git commit. You then edit index.md to fill in
-# your stack, rules, and current focus.
+# 4. Edit ~/Vaults/my-project/index.md to fill in your stack, rules, focus.
+#    This becomes your agent's ground truth.
 
-# 4. (Optional) Open the vault in Obsidian to browse it visually
+# 5. Start Claude Code in your project. The skill activates automatically.
 ```
 
 That's it. From now on, every task in this project goes through the loop.
 
 ---
 
-## The loop
+## The loop, step by step
 
-Every task the agent runs through these 5 phases. No skipping.
+The agent runs every task through these 5 phases. It announces each phase out loud (`[co-vault: PHASE 2/5 — PROPOSE]`), so you always know where it is.
 
 ### 1. ORIENT
-Before touching code, the agent reads `index.md` and greps the vault for `author: user` notes in the relevant domain. If it finds an open conflict, it stops.
+Reads `index.md`, greps the vault for `author: user` notes in the relevant domain, and checks for open conflicts. **If anything you wrote contradicts the task, it stops and asks you.**
 
 ### 2. PROPOSE
-The agent writes a plan to `proposals/<timestamp>.md` — goal, steps, assumptions, what it will not touch — **before executing**. You see the plan first.
+Writes a plan to `proposals/<timestamp>.md` — goal, steps, assumptions, what it will not touch. For non-trivial tasks, it waits for your confirmation. **You see the plan first.**
 
 ### 3. EXECUTE
-The agent does the actual work. Git commits reference the proposal path so the codebase links back to the vault.
+Does the actual work. Project commits reference the proposal path so the codebase links back to the vault.
 
 ### 4. REPORT
-The agent writes `reports/<timestamp>.md` — what actually happened, what differed from the plan, which assumptions were wrong. New observations become atomic notes in `facts/`.
+Writes `reports/<timestamp>.md` — what actually happened, what differed from the plan, which assumptions were wrong. New observations become atomic notes in `facts/`.
 
-### 5. REQUEST_REVIEW *(only if conflict)*
-If the agent discovers something that contradicts a `user`-authored note, it **must not silently override it**. It opens `conflicts/<id>.md`, describes the contradiction, and stops working in that domain until you resolve it.
+### 5. REQUEST_REVIEW *(only if a conflict was discovered)*
+If during execution it found something that contradicts a `user` note, it **does not silently override**. It opens `conflicts/<id>.md`, describes the contradiction, and stops working in that domain until you resolve it.
 
-That fifth phase is where most agent memory systems fail. co-vault makes it the only thing that can block the loop.
-
----
-
-## The author hierarchy (the trick that makes it work)
-
-Every note has a `author:` field in its frontmatter. Three values:
-
-| Value | Meaning | Agent rights |
-|---|---|---|
-| `user` | You wrote it | **Read-only.** Can cite, can link to. Cannot edit, cannot supersede. |
-| `agent+reviewed` | Agent wrote it, you signed off | **Read-only.** Frozen until you unfreeze. |
-| `agent` | Agent wrote it, unreviewed | Free to edit, supersede, archive. |
-
-When something the agent observes contradicts a higher-authority note, the agent loses. It cannot rewrite history; it can only ask for the user to reconsider.
-
-This is the entire conceptual core. Everything else in the SKILL.md is just bash and templates that enforce it.
+That last phase is where most agent memory systems fail. co-vault makes it the only thing that can block the loop.
 
 ---
 
@@ -136,14 +198,15 @@ This is the entire conceptual core. Everything else in the SKILL.md is just bash
 ```
 You:    Switch the auth layer to use refresh tokens.
 
-Agent:  [reads index.md]
-        [greps domain:auth, author:user]
-        → finds decisions/2026-02-14-stateless-jwt.md
+Agent:  [co-vault: PHASE 1/5 — ORIENT]
+        Reading index.md...
+        Grepping author: user notes in domain: auth...
+        → Found decisions/2026-02-14-stateless-jwt.md
 
-        I found a user-authored decision from Feb 14 that explicitly
-        chose stateless JWT and rejected refresh tokens for this project.
-        The reason given: "no server-side session store, deploys are
-        stateless containers."
+        I found a user-authored decision from Feb 14 that explicitly chose
+        stateless JWT and rejected refresh tokens for this project. The
+        reason given: "no server-side session store, deploys are stateless
+        containers."
 
         Before I proceed, can you confirm this decision is being revised?
         Since that note is author: user, I cannot edit it myself —
@@ -156,70 +219,162 @@ You:    Right, I forgot. The session store changed last week. I'll
 
 You:    Done. Proceed.
 
-Agent:  [writes proposals/2026-04-09-1430-refresh-tokens.md]
+Agent:  [co-vault: PHASE 2/5 — PROPOSE]
+        Writing proposals/2026-04-09-1430-refresh-tokens.md...
+
         Plan:
           1. Add refresh_tokens table migration
-          2. ...
+          2. Add /auth/refresh endpoint
+          3. Update client SDK to handle 401 → refresh → retry
         Assumptions:
           - Redis is available (per index.md)
           - 7-day refresh token lifetime acceptable
-        Will not touch: existing JWT signing logic.
+        Out of scope: existing JWT signing logic.
+        Estimated effort: medium
 
         Confirm to proceed?
 ```
 
-A normal agent would have just started writing refresh token code and contradicted your earlier architectural decision. co-vault made it stop and check.
+A normal agent would have just started writing refresh-token code and contradicted the architectural decision from two months ago. co-vault made it stop and check.
 
 ---
 
-## Vault structure
+## Vault structure (self-describing)
 
 ```
 $COVAULT_PATH/
-├── index.md          # entry point, hand-curated by you (author: user)
-├── domains/          # one file per subsystem (you author)
-├── decisions/        # immutable choices (you, or agent+reviewed)
-├── facts/            # atomic observations (agent)
-├── proposals/        # plans before action (agent)
-├── reports/          # results after action (agent)
-├── conflicts/        # OPEN questions blocking work
-└── _archive/         # never delete, only move here
+├── .covault/                    # ← machine-readable schema, read by agents
+│   ├── manifest.yaml            # version, folders, conventions, loop definition
+│   ├── schemas/
+│   │   ├── decision.md          # frontmatter + body schema for each note type
+│   │   ├── fact.md
+│   │   ├── proposal.md
+│   │   ├── report.md
+│   │   ├── conflict.md
+│   │   ├── domain.md
+│   │   └── index.md
+│   └── examples/                # filled-in instances the agent pattern-matches
+│       └── (one per note type)
+├── index.md                     # entry point, hand-curated by you (author: user)
+├── domains/                     # one file per subsystem (you author)
+├── decisions/                   # immutable choices (you, or agent+reviewed)
+├── facts/                       # atomic observations (agent)
+├── proposals/                   # plans before action (agent)
+├── reports/                     # results after action (agent)
+├── conflicts/                   # OPEN questions blocking work
+└── _archive/                    # never delete, only move here
 ```
+
+### Why `.covault/` exists — the vault is self-describing
+
+Most agent-memory systems force the agent to memorize file layouts and
+field names from documentation. co-vault inverts this: the vault declares
+its own structure in a machine-readable manifest, and every note type has
+a schema and an example the agent can load on demand.
+
+This means:
+
+- **One read = full schema knowledge.** The agent reads
+  `.covault/manifest.yaml` once on session start and knows every folder,
+  every note type, every required field, every convention.
+- **Versioned.** The manifest has a `schema_version`. If the agent and the
+  vault disagree on the version, the agent refuses to operate instead of
+  silently corrupting your data.
+- **Pattern-matchable.** Before writing any note, the agent reads
+  `.covault/schemas/<type>.md` and `.covault/examples/<type>.md`. It
+  copies the example structure and fills it in. No invented fields.
+- **Tool-agnostic by construction.** Any LLM that can read YAML and
+  Markdown can use this vault. The schema is not hidden in a SKILL.md
+  somewhere; it lives next to the data.
+- **Forward compatible.** When the schema evolves to v2, you bump
+  `schema_version`, write a migration, and old agents either upgrade or
+  refuse — they never quietly do the wrong thing.
+
+---
+
+## Hard enforcement (optional but recommended)
+
+The skill is a strong instruction, not a hard guarantee. For real safety, use the included pre-commit hook in your vault's git repo:
+
+```bash
+cp examples/pre-commit-hook.sh $COVAULT_PATH/.git/hooks/pre-commit
+chmod +x $COVAULT_PATH/.git/hooks/pre-commit
+```
+
+This rejects any commit that modifies a file with `author: user`, unless the commit message contains `[user-edit]`. If an agent ever tries to silently override one of your decisions, the commit fails and you find out immediately.
 
 ---
 
 ## FAQ
 
-**How is this different from just using `CLAUDE.md`?**
-`CLAUDE.md` is one file, loaded into context at session start, written by you. co-vault is many files, queried on-demand by the agent, written by both of you, with explicit ownership rules. Use both. They complement each other.
+**How is this different from `CLAUDE.md` / `.cursorrules`?**
+Those define *how the agent behaves* (style, conventions, always loaded into context). co-vault defines *what is true about your project and what the agent has been doing*. They complement each other. Use both.
 
-**Does the agent really obey the `author: user` rule?**
-The skill is a strong instruction, not a hard enforcement. For real safety, add a pre-commit hook to your vault git repo that rejects commits modifying `author: user` files when the commit is made by an agent tool. A template hook is in `examples/pre-commit-hook.sh`.
+**Will the agent really obey the `author: user` rule?**
+The skill is a strong instruction, not hard enforcement. For real guarantees, use the pre-commit hook (above). It enforces the rule at the git layer where instructions can't lie.
 
-**What if I want to use this with Cursor / Aider / something else?**
-The SKILL.md is just Markdown. Drop it in whatever the agent reads as system instructions (Cursor rules, Aider conventions, etc.). The bash commands work in any POSIX shell.
+**Doesn't this just become CLAUDE.md with extra steps?**
+No — three differences. First, `CLAUDE.md` is one file loaded once at session start; co-vault is many files queried on demand based on the current task. Second, `CLAUDE.md` is written only by you; co-vault is co-authored with explicit ownership. Third, `CLAUDE.md` has no concept of conflict — co-vault stops the agent when its observations clash with your decisions.
 
-**Will the vault become huge?**
-That's what the manual `co-vault review` command is for. It surfaces stale proposals, missing reports, unlinked facts, and notes without frontmatter. You decide what gets archived. Nothing happens automatically.
+**Will the vault grow forever?**
+That's what the manual `co-vault review` command is for. It surfaces stale proposals, missing reports, unlinked facts, notes without frontmatter, and archive candidates. You decide what gets archived. **Nothing happens automatically** — that's a deliberate choice, because silent consolidation is what makes agent memory untrustworthy.
 
-**Why not auto-consolidate like Claude Code's Auto-Dream?**
-Because auto-consolidation is what makes agent memory untrustworthy. If you can't tell whether a note is the result of a deliberate decision or a background merge, you can't rely on it. co-vault prefers explicit human review over invisible cleanup.
+**Can I use this with Cursor / Aider / something else?**
+Yes. The `SKILL.md` is just Markdown — drop it into whatever the agent reads as system instructions. The bash commands work in any POSIX shell. Cursor/Aider ports are on the roadmap.
+
+**Why not just use a vector DB or RAG?**
+Vector retrieval is great for finding *similar* content, terrible for enforcing *authority*. There is no embedding that says "this fact came from the human and must not be overridden." co-vault is not about retrieval quality; it's about respecting human decisions. Use both if you want.
 
 **Can I use Obsidian plugins?**
-Yes, and you should. **Dataview** turns your vault into a queryable database. **Templater** gives you keyboard shortcuts for new notes. **Git** plugin commits your vault from inside Obsidian. None are required, all are recommended.
+Yes, and you should. **Dataview** turns your vault into a queryable database. **Templater** gives you keyboard shortcuts for new notes. **Git** plugin commits from inside Obsidian. None are required, all are recommended.
+
+**What about teams?**
+Each developer points `COVAULT_PATH` at the same shared git repo. The pre-commit hook keeps everyone honest. Conflicts that span developers' decisions become normal git merge conflicts plus co-vault `conflicts/` notes — explicit, discussable, reviewable.
 
 ---
 
 ## Roadmap
 
-- [ ] Pre-commit hook to enforce the `author: user` rule at the git layer
-- [ ] Dataview query pack for `index.md` (open conflicts, recent reports, stale proposals)
-- [ ] Cursor rules port
+- [x] 5-phase loop with phase announcements
+- [x] Author hierarchy with hard `user` immutability
+- [x] Self-describing vault (`.covault/manifest.yaml` + schemas + examples)
+- [x] Schema versioning with refusal-on-mismatch
+- [x] Pre-commit hook for git-layer enforcement
+- [x] Manual REVIEW command
+- [x] BOOTSTRAP for new projects
+- [x] ABORT command for mid-task cancellation
+- [ ] Cursor `.cursorrules` port
 - [ ] Aider conventions port
+- [ ] Dataview query pack for `index.md` (open conflicts, recent reports, stale proposals)
 - [ ] VS Code extension for one-key "promote to reviewed"
 - [ ] Optional embedding-based retrieval as a fallback when grep misses
 
-PRs welcome.
+PRs welcome. See [Contributing](#contributing) below.
+
+---
+
+## Contributing
+
+This project is small on purpose. Before opening a PR:
+
+1. **Issues for ideas, PRs for fixes.** If you want to add a new feature, open an issue first so we can discuss whether it fits the philosophy. The bar for adding things is high — co-vault stays small or it stops being trustworthy.
+2. **No silent magic.** Anything that runs in the background without the user knowing is rejected on principle. The whole point of this project is auditability.
+3. **Test your changes against a real agent.** Run the SKILL.md through Claude Code (or your tool of choice) and confirm it actually behaves as documented.
+4. **The author hierarchy is sacred.** PRs that loosen the `user` immutability rule will not be merged.
+
+Good first contributions:
+- Cursor / Aider port of `SKILL.md`
+- Dataview queries for `index.md`
+- Translations of the README
+- Real-world examples in `examples/`
+
+---
+
+## Status
+
+🚧 **Alpha.** The interface (frontmatter fields, phase names, file layout) may change before v1.0. Pin a commit if you're using this in production.
+
+If you find a bug, an unclear instruction, or a way the agent misbehaves against the SKILL.md, please open an issue with the conversation transcript. The most valuable feedback is "I told it X and it did Y instead of Z."
 
 ---
 
@@ -232,3 +387,9 @@ MIT. Take it, fork it, change the name, ship it in your own product. If it helps
 ## Credits
 
 Built out of frustration with watching AI agents helpfully overwrite carefully-considered architectural decisions for the third time in a week. Inspired by the gap between Claude Code's `~/.claude/` memory and what I actually wanted: a shared notebook, not a private one.
+
+If co-vault saves you from one bad refactor, it has paid for itself.
+
+---
+
+<sub>If you found this useful, consider starring the repo — it helps other people find it. And if you build something on top, I'd love to see it.</sub>
