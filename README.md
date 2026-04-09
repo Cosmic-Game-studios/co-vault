@@ -194,6 +194,38 @@ The person vault is designed to grow without burning context:
 
 ---
 
+## The science behind co-vault
+
+Every design decision in v0.6 maps to a peer-reviewed concept from cognitive science. This is not buzzword garnish — each citation corresponds to a concrete mechanism in the loop.
+
+| Concept | Citation | How co-vault uses it |
+|---|---|---|
+| **Memory systems theory** | Tulving 1972; Squire 2004 | Vault folders are explicitly tagged in the manifest as `procedural` (`schemas/`), `semantic` (`facts/`, `decisions/`, `domains/`), or `episodic` (`proposals/`, `reports/`, `conflicts/`). Storage strategy mirrors how human memory is organized. |
+| **Predictive coding** | Friston 2010; Clark 2013 | Every proposal must contain `## Predictions` — minimum 3 testable claims with confidence values. Without explicit predictions there is no measurable learning signal. The agent builds a generative model, then measures prediction error in the matching report. |
+| **Active inference** | Friston 2017 | The proposal's `## Assumptions` section makes hidden beliefs explicit so they can be tested. The agent doesn't just react — it commits to claims and checks them. |
+| **Complementary Learning Systems** | McClelland, McNaughton, O'Reilly 1995 | Two-stage consolidation: new agent observations start as `author: agent` (fast, mutable). After 3+ confirmations across sessions, `bin/maintain-vault.sh` auto-promotes them to `author: agent+reviewed` (immutable). This mirrors hippocampus → neocortex transfer. |
+| **Brier scoring** | Brier 1950; Tetlock 2015 | The `calibration_log.md` tracks how well-calibrated the agent's prediction confidence is over time. A Brier-like score (lower = better) is recomputed after every report. The agent reads this on session start to ground future confidence values. |
+| **Ebbinghaus forgetting curve** | Ebbinghaus 1885 | Notes whose `last_confirmed` is older than 30 days have their confidence downgraded one step (high → medium → low). Knowledge that isn't refreshed loses reliability — same as in human memory. |
+| **Working memory limits** | Miller 1956 (7±2); Cowan 2001 (4±1) | Hard token budget per session, hard limit on simultaneously loaded notes. The vault is queried via small indexes, not bulk reads. |
+| **Dual-process theory** | Kahneman 2011 | `estimated_effort: small` proposals proceed automatically (System 1). `medium` and `large` require explicit user confirmation (System 2). |
+| **Distributed cognition** | Hutchins 1995 | The vault IS distributed cognition — the human, the agent, and the artifact (Markdown files) form a single cognitive system. The author hierarchy makes the division of labor explicit. |
+| **Schema theory** | Bartlett 1932; Piaget 1952 | The 6-phase loop is itself a schema: minor observations are assimilated into existing facts (`confirmation_count++`); contradictions trigger accommodation (a `conflict` note that blocks work until restructured). |
+
+**The 6-phase loop, mapped:**
+
+```
+PHASE 1 ORIENT       → situated perception (Hutchins)
+PHASE 2 HYPOTHESIZE  → generative model with predictions (Friston)
+PHASE 3 EXECUTE      → motor action
+PHASE 4 VERIFY       → prediction error checking (Bayesian updating)
+PHASE 5 CONSOLIDATE  → memory consolidation (McClelland CLS)
+PHASE 6 REVIEW       → executive control / accommodation (only on conflict)
+```
+
+Each phase writes structured data that feeds the next. Each phase has a measurable output. None of this is metaphor — predictions get verdicts, verdicts feed the calibration log, the calibration log changes future confidence values. It is a closed loop with a real learning signal.
+
+---
+
 ## What makes this different from everything else
 
 | | Claude Code Memory | Cursor Rules | RAG / Vector DB | MCP Memory Tool | **co-vault** |
@@ -410,16 +442,22 @@ Each developer points `COVAULT_PATH` at the same shared git repo. The pre-commit
 ## Roadmap
 
 - [x] 5-phase loop with phase announcements
+- [x] **6-phase loop grounded in cognitive science** (predictive coding, CLS, Brier scoring)
+- [x] **Predictions + verification on every task** for measurable calibration
+- [x] **Auto-maintenance** (decay, promotion, archival, calibration) — zero manual pflege
+- [x] **Autonomous mode** with hard branch / token / sub-task limits
+- [x] **Dataview query pack** for live Obsidian dashboards
 - [x] Author hierarchy with hard `user` immutability
 - [x] Self-describing vault (`.covault/manifest.yaml` + schemas + examples)
 - [x] Schema versioning with refusal-on-mismatch
 - [x] **Person vault (cross-project, cross-agent)** with auto-rebuilt index
 - [x] Token-efficient loading (index + on-demand fetch, not bulk)
 - [x] PERSON LEARNING phase after each task
-- [x] Pre-commit hook for git-layer enforcement
+- [x] Pre-commit hook for git-layer enforcement (project + person)
 - [x] Manual REVIEW command (project + person)
 - [x] BOOTSTRAP for new projects and new person vaults
 - [x] ABORT command for mid-task cancellation
+- [x] Validation script + GitHub Actions CI
 - [ ] Cursor `.cursorrules` port
 - [ ] Aider conventions port
 - [ ] Dataview query pack for `index.md` (open conflicts, recent reports, stale proposals)

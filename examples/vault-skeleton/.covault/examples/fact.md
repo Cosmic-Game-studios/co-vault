@@ -5,6 +5,8 @@ domain: auth
 created: 2026-04-09T14:32Z
 discovered_in: "[[reports/2026-04-09-1430-add-login-ui]]"
 confidence: high
+confirmation_count: 1
+last_confirmed: 2026-04-09T14:32Z
 ---
 
 ## Claim

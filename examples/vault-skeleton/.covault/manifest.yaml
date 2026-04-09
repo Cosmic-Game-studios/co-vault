@@ -1,44 +1,68 @@
-# co-vault manifest — read by agents on session start
-# This file is the single source of truth for vault structure and schemas.
-# Agents MUST read this file before performing any operation on the vault.
+# co-vault PROJECT manifest — v0.6
+#
+# This vault is self-describing. Agents read this file once per session and
+# the relevant schema (.covault/schemas/<type>.md) before each write.
+#
+# The vault is organized around the human memory systems framework
+# (Tulving 1972, Squire 2004): each folder maps to a known memory type.
 
-covault_version: "0.4"
-schema_version: 1
-scope: project                                # vs "person" for person vaults
+covault_version: "0.6"
+schema_version: 2
+scope: project
 vault_name: "<set during bootstrap>"
 
-# Authority hierarchy — applied to every note based on its `author:` field.
-# Higher = more authority. Agents may NEVER edit notes with author equal to or
-# above `agent+reviewed`.
+# Authority hierarchy. Higher = more authority.
+# Agents may NEVER edit notes at or above `agent+reviewed`.
 authority_hierarchy:
   - user             # immutable to agents
-  - agent+reviewed   # immutable to agents
+  - agent+reviewed   # immutable to agents (promoted from agent after review or 3+ confirmations)
   - agent            # mutable by agents
 
-# Conventions — applied throughout the vault.
+# Memory systems mapping (Tulving, Squire)
+# This connects each vault folder to a category of human memory so the
+# agent's storage strategy mirrors how durable memory actually works.
+memory_systems:
+  procedural:
+    description: "How to do things — schemas, conventions, workflows"
+    folders: [".covault/schemas"]
+    consolidation: immediate
+  semantic:
+    description: "What is true — atemporal facts, decisions, ground rules"
+    folders: ["facts", "decisions", "domains"]
+    consolidation: deliberate
+  episodic:
+    description: "What happened when — time-stamped events tied to specific tasks"
+    folders: ["proposals", "reports", "conflicts"]
+    consolidation: rapid
+  working:
+    description: "Current session context — never written to disk"
+    folders: []
+
+# Conventions
 conventions:
-  timestamp_format: "%Y-%m-%dT%H:%MZ"     # UTC, minute precision
+  timestamp_format: "%Y-%m-%dT%H:%MZ"
   filename_format: "<YYYY-MM-DD-HHMM>-<slug>.md"
   slug_rules: "2-4 words, lowercase, hyphenated"
   collision_rule: "append -2, -3, ... until unique"
   one_claim_per_fact: true
   link_format: "[[wikilink]]"
-  never_duplicate_text: true              # link instead of copy
+  never_duplicate_text: true
   commit_after_every_phase_write: true
 
 # Folders — each maps to a note type with its own schema.
-# Agents look up the schema in .covault/schemas/<note_type>.md before writing.
 folders:
   index.md:
     note_type: index
     description: "Vault entry point. Hand-curated by the user."
     typical_author: user
+    memory_system: semantic
     schema: .covault/schemas/index.md
 
   domains/:
     note_type: domain
     description: "One file per subsystem. Defines scope and ground rules."
     typical_author: user
+    memory_system: semantic
     schema: .covault/schemas/domain.md
     example: .covault/examples/domain.md
 
@@ -46,64 +70,112 @@ folders:
     note_type: decision
     description: "Immutable architectural and product choices."
     typical_author: user
+    memory_system: semantic
     schema: .covault/schemas/decision.md
     example: .covault/examples/decision.md
 
   facts/:
     note_type: fact
-    description: "Atomic observations made by the agent during work. One claim per file."
+    description: "Atomic observations made by the agent. One claim per file."
     typical_author: agent
+    memory_system: semantic
     schema: .covault/schemas/fact.md
     example: .covault/examples/fact.md
+    consolidation_threshold: 3   # confirmed 3+ times → promote to agent+reviewed
 
   proposals/:
     note_type: proposal
-    description: "Plans written by the agent BEFORE executing a task."
+    description: "Hypotheses with explicit predictions, written before action."
     typical_author: agent
+    memory_system: episodic
     schema: .covault/schemas/proposal.md
     example: .covault/examples/proposal.md
 
   reports/:
     note_type: report
-    description: "What actually happened after a proposal was executed."
+    description: "Verification of predictions and narrative of what happened."
     typical_author: agent
+    memory_system: episodic
     schema: .covault/schemas/report.md
     example: .covault/examples/report.md
 
   conflicts/:
     note_type: conflict
-    description: "Open contradictions discovered by the agent. BLOCKS work in the affected domain."
+    description: "Open contradictions. BLOCKS work in the affected domain."
     typical_author: agent
+    memory_system: episodic
     schema: .covault/schemas/conflict.md
     example: .covault/examples/conflict.md
     blocks_loop: true
 
+  calibration_log.md:
+    note_type: calibration
+    description: "Aggregate calibration statistics. Auto-maintained by maintain-vault.sh."
+    typical_author: agent
+    memory_system: procedural
+    schema: .covault/schemas/calibration.md
+    auto_maintained: true
+
   _archive/:
     note_type: any
-    description: "Soft-deleted notes. Never delete files; move them here."
+    description: "Soft-deleted notes. Never delete; move here with reason."
     typical_author: any
-    rule: "every archived file gets a top comment explaining why it was archived"
 
-# Loop — the 5 phases the agent must run on every task.
+# Loop — the 6 phases the agent must run on every task.
+# Each phase maps to a documented function in cognitive science.
 loop:
   - phase: 1
     name: ORIENT
-    purpose: "Read index, find user notes in relevant domains, check for open conflicts."
+    function: "Perception — situate yourself in the existing knowledge state"
+    science: "Situated cognition (Hutchins 1995); attention orienting"
     can_block: true
   - phase: 2
-    name: PROPOSE
-    purpose: "Write a proposal file before touching project code."
+    name: HYPOTHESIZE
+    function: "Build a generative model with explicit, testable predictions"
+    science: "Predictive coding (Friston 2010); active inference"
     can_block: false
   - phase: 3
     name: EXECUTE
-    purpose: "Do the actual work on project code."
+    function: "Motor action — touch project code"
+    science: "Sensorimotor execution"
     can_block: false
   - phase: 4
-    name: REPORT
-    purpose: "Write a report and any new facts discovered."
+    name: VERIFY
+    function: "Compare predictions to observed reality (prediction error)"
+    science: "Predictive processing; Bayesian updating"
     can_block: false
   - phase: 5
-    name: REQUEST_REVIEW
-    purpose: "If a contradiction was found, write a conflict and STOP."
+    name: CONSOLIDATE
+    function: "Write to memory; update calibration; promote stable facts"
+    science: "Complementary Learning Systems (McClelland 1995); spaced repetition"
+    can_block: false
+  - phase: 6
+    name: REVIEW
+    function: "Resolve conflicts between observation and ground truth"
+    science: "Executive function; cognitive control"
     can_block: true
     only_if: contradiction_found
+
+# Auto-maintenance — runs after every loop iteration via bin/maintain-vault.sh
+maintenance:
+  rebuild_index: every_loop
+  decay_confidence: every_loop                  # apply Ebbinghaus-like decay
+  promote_facts: every_loop                     # 3+ confirmations → agent+reviewed
+  archive_expired: every_loop                   # past valid_until → _archive
+  update_calibration: every_loop                # recompute Brier-like score
+  validate: every_loop                          # exit non-zero on schema breach
+
+# Autonomous mode — for fire-and-forget tasks
+autonomous_mode:
+  enabled: true
+  hard_limits:
+    max_subtasks_per_run: 5
+    max_tokens_per_run: 30000
+    must_run_on_branch: true
+    main_branch_forbidden: true
+  exit_conditions:
+    - any_conflict_found
+    - any_out_of_scope_discovery
+    - any_user_authored_note_contradiction
+    - token_budget_exceeded
+    - subtask_limit_reached

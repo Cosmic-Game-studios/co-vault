@@ -40,7 +40,11 @@ echo "==> Installing co-vault skill to $SKILL_DIR"
 mkdir -p "$SKILL_DIR/bin"
 cp "$REPO_DIR/SKILL.md" "$SKILL_DIR/SKILL.md"
 cp "$REPO_DIR/bin/rebuild-index.sh" "$SKILL_DIR/bin/rebuild-index.sh"
+cp "$REPO_DIR/bin/validate-vault.sh" "$SKILL_DIR/bin/validate-vault.sh"
+cp "$REPO_DIR/bin/maintain-vault.sh" "$SKILL_DIR/bin/maintain-vault.sh"
 chmod +x "$SKILL_DIR/bin/rebuild-index.sh"
+chmod +x "$SKILL_DIR/bin/validate-vault.sh"
+chmod +x "$SKILL_DIR/bin/maintain-vault.sh"
 
 # Bootstrap the vault if it doesn't exist yet
 if [ -d "$VAULT_PATH/.covault" ]; then

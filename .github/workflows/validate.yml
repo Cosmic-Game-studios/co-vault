@@ -16,6 +16,7 @@ jobs:
         run: |
           chmod +x bin/validate-vault.sh
           chmod +x bin/rebuild-index.sh
+          chmod +x bin/maintain-vault.sh
           chmod +x install.sh
           chmod +x examples/pre-commit-hook.sh
           chmod +x examples/person-pre-commit-hook.sh
@@ -31,6 +32,20 @@ jobs:
           ./bin/rebuild-index.sh examples/person-vault-skeleton
           test -f examples/person-vault-skeleton/_index.md
           grep -q '^type: index' examples/person-vault-skeleton/_index.md
+
+      - name: Test maintain-vault on project skeleton
+        run: |
+          ./bin/maintain-vault.sh examples/vault-skeleton
+          test -f examples/vault-skeleton/calibration_log.md
+          grep -q '^type: calibration' examples/vault-skeleton/calibration_log.md
+
+      - name: Test maintain-vault on person skeleton
+        run: ./bin/maintain-vault.sh examples/person-vault-skeleton
+
+      - name: Re-validate after maintenance (should still pass)
+        run: |
+          ./bin/validate-vault.sh examples/vault-skeleton
+          ./bin/validate-vault.sh examples/person-vault-skeleton
 
       - name: Verify SKILL.md exists and has frontmatter
         run: |
