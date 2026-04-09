@@ -4,6 +4,69 @@ All notable changes to co-vault are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-04-09
+
+Structured reasoning meets cognitive science. The agent now thinks before
+it acts, explains why approaches should work, learns from its mistakes,
+and never repeats failed strategies. Inspired by techniques from the
+[DeepResearch](https://github.com/Cosmic-Game-studios/deepresearch)
+autonomous optimization framework.
+
+### Added
+- **Deep Read protocol** in ORIENT (PHASE 1, Step 1c): mandatory structured
+  reasoning before any proposal. Problem decomposition, constraint inventory,
+  causal hypothesis formation, and approach enumeration. Prevents the
+  "first idea = only idea" failure mode.
+- **Anti-pattern tracking**: failed approaches are recorded as facts with
+  `pattern_type: anti-pattern` and loaded during ORIENT (Step 1b) to
+  prevent the agent from repeating known-bad strategies.
+- **Causal hypothesis** (`## Hypothesis` section) required in every proposal.
+  Separates "what I think will happen" (predictions) from "why I think it
+  will happen" (hypothesis). Includes falsification conditions.
+- **Alternatives considered** (`## Alternatives considered` section) required
+  in every proposal. At least one rejected approach must be documented.
+- **Change-type classification** in proposal frontmatter: `parametric`,
+  `structural_addition`, `structural_removal`, `structural_replacement`,
+  `integration`, `architectural`. Each has a risk level that determines
+  confirmation behavior alongside `estimated_effort`.
+- **Reflection protocol** in VERIFY (PHASE 4, Step 4c): mandatory structured
+  reflection after prediction verdicts. Covers surprises, causal error
+  analysis, model updates, and anti-pattern candidates.
+- **Hypothesis verdict** (`## Hypothesis verdict` section) required in every
+  report. Evaluates the causal model separately from predictions.
+- **Per-domain calibration** in `calibration_log.md`: prediction accuracy
+  broken down by domain, so the agent uses domain-specific confidence.
+- **Per-change-type calibration**: accuracy broken down by change type, so
+  the agent knows which kinds of changes it's best/worst at predicting.
+- **Hypothesis accuracy tracking** in calibration log: confirmed vs
+  partially confirmed vs refuted counts.
+
+### Changed
+- **Manifest version bumped to 0.7.** Adds `change_types`, `reasoning_protocol`,
+  and `fact_types` sections to the manifest.
+- `proposal.md` schema upgraded to v3: adds `change_type`, `risk_level`,
+  `## Hypothesis`, `## Alternatives considered`.
+- `report.md` schema upgraded to v3: adds `change_type`, `hypothesis_verdict`,
+  `anti_patterns_found`, `## Hypothesis verdict`, `## Reflection`.
+- `fact.md` schema upgraded to v3: adds `pattern_type` field
+  (`observation` | `anti-pattern`), new body format for anti-pattern facts.
+- `calibration.md` schema upgraded to v3: adds hypothesis tracking,
+  anti-pattern count, per-domain table, per-change-type table.
+- `maintain-vault.sh` enhanced: now computes per-domain and per-change-type
+  calibration tables, tracks hypothesis verdicts, counts anti-patterns.
+- Hard rules grew from 20 to 27 (added rules for hypothesis, alternatives,
+  change_type, reflection, anti-patterns, Deep Read).
+
+### Notes
+- The reasoning protocol adds ~350 tokens per task (Deep Read ~200,
+  Reflection ~150). This is a small cost for a significant improvement
+  in prediction accuracy and domain learning.
+- Anti-patterns follow the same CLS consolidation lifecycle as observations:
+  confirmed 3+ times → auto-promoted to `agent+reviewed`.
+- All v3 schema changes are backward-compatible with v2 reports: the
+  calibration log gracefully handles reports without `change_type` or
+  `hypothesis_verdict` fields.
+
 ## [0.6.0] — 2026-04-09
 
 A scientifically-grounded redesign of the loop. Predictions become first-class
@@ -195,6 +258,7 @@ own memory architecture. Zero manual maintenance.
   Claude Code's built-in memory.
 - MIT license.
 
+[0.7.0]: https://github.com/Cosmic-Game-studios/co-vault/releases/tag/v0.7.0
 [0.6.0]: https://github.com/Cosmic-Game-studios/co-vault/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Cosmic-Game-studios/co-vault/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Cosmic-Game-studios/co-vault/releases/tag/v0.4.0
