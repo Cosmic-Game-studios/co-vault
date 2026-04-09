@@ -4,13 +4,16 @@ description: Use whenever the user gives you a task in a project where COVAULT_P
   is set, OR whenever COVAULT_PERSON is set, OR the user says "bootstrap co-vault",
   "co-vault review", "abort", or "autonomous: <intent>". This skill operates
   against self-describing vaults using a 6-phase loop grounded in cognitive
-  science (predictive coding, CLS theory, spaced repetition). Project-vault
-  notes are governed by an authority hierarchy where user notes are immutable.
-  Person-vault notes are agent-maintained but bounded by token-efficiency rules.
-  Auto-maintenance handles consolidation, decay, archival, and calibration.
+  science (predictive coding, CLS theory, spaced repetition) and enhanced
+  with structured reasoning techniques from DeepResearch (causal hypotheses,
+  anti-pattern tracking, reflection protocol, change-type classification).
+  Project-vault notes are governed by an authority hierarchy where user notes
+  are immutable. Person-vault notes are agent-maintained but bounded by
+  token-efficiency rules. Auto-maintenance handles consolidation, decay,
+  archival, per-domain calibration, and anti-pattern aggregation.
 ---
 
-# co-vault — agent operating instructions (v0.6, scientific loop)
+# co-vault — agent operating instructions (v0.7, scientific loop + structured reasoning)
 
 You operate against up to two self-describing vaults:
 
@@ -151,8 +154,11 @@ You will not collapse phases. You will not skip CONSOLIDATE.
 
 ## PHASE 1 — ORIENT
 *Function: situated perception. Build a model of the current knowledge state.*
+*Enhanced with: Deep Read protocol (DeepResearch R1).*
 
 Announce: `[co-vault: PHASE 1/6 — ORIENT]`
+
+### Step 1a — Load context (unchanged)
 
 ```bash
 cd "$COVAULT_PATH"
@@ -183,6 +189,44 @@ for D in $DOMAINS; do
 done
 ```
 
+### Step 1b — Check anti-patterns (new — DeepResearch knowledge base)
+
+Before proposing anything, check for previously failed approaches:
+```bash
+# Search for anti-patterns in this domain
+for D in $DOMAINS; do
+  find facts -type f -name '*.md' 2>/dev/null | while read f; do
+    grep -qE '^pattern_type:[[:space:]]*anti-pattern' "$f" \
+      && grep -qE "domain:.*$D" "$f" \
+      && { echo "⚠ ANTI-PATTERN: $f"; cat "$f"; echo; }
+  done
+done
+```
+
+If anti-patterns exist for the current domain, factor them into your
+reasoning. Do NOT repeat an approach that has already been recorded as
+an anti-pattern unless the user explicitly requests it.
+
+### Step 1c — Deep Read (new — structured reasoning before action)
+
+After loading context, perform structured reasoning BEFORE moving to
+PHASE 2. Print this analysis in your response (not in a vault file):
+
+1. **Problem decomposition** — Break the task into component parts.
+   What are the independent sub-problems?
+2. **Constraint inventory** — What user decisions, domain rules, and
+   anti-patterns constrain the solution space?
+3. **Causal hypothesis** — What is the root cause or core mechanism?
+   Why does this task need to be done? What specific bottleneck or gap
+   does it address?
+4. **Approach candidates** — List 2-3 possible approaches with
+   trade-offs. Do NOT commit to one yet; that happens in PHASE 2.
+
+This is a reasoning step, not a writing step. It costs ~200 tokens
+and prevents the "first idea = only idea" failure mode.
+
+### Step 1d — Person vault cross-reference
+
 ALSO, if `COVAULT_PERSON` is active, opportunistically scan the person
 vault index for hits on the current task's domains:
 ```bash
@@ -194,12 +238,14 @@ For any hit, `cat` that specific file.
 **Stopping conditions:**
 - Open conflict in domain → STOP, ask user.
 - User-authored note contradicts the task → STOP, quote it, ask user.
+- Anti-pattern directly applies to the only viable approach → WARN user.
 
 ---
 
 ## PHASE 2 — HYPOTHESIZE
 *Function: build a generative model with explicit, testable predictions.*
 *Science: predictive coding (Friston 2010); active inference.*
+*Enhanced with: informed mutation selection (DeepResearch L1.5).*
 
 Announce: `[co-vault: PHASE 2/6 — HYPOTHESIZE]`
 
@@ -211,11 +257,52 @@ cat "$COVAULT_PATH/.covault/examples/proposal.md"
 
 Write `proposals/<timestamp>-<slug>.md` matching the schema. Critically:
 
+### Change type classification (new — DeepResearch mutation types)
+
+Every proposal MUST classify its `change_type` in frontmatter. This
+determines the safety rails and review requirements:
+
+| change_type              | level | risk   | description                                    |
+|--------------------------|-------|--------|------------------------------------------------|
+| `parametric`             | 1     | low    | Change a value, config, or threshold           |
+| `structural_addition`    | 2     | medium | Add new function, module, endpoint             |
+| `structural_removal`     | 2     | medium | Remove dead code or unnecessary complexity     |
+| `structural_replacement` | 2     | high   | Replace one implementation with a better one   |
+| `integration`            | 2     | medium | Connect two existing components                |
+| `architectural`          | 3     | high   | Design and build a new component from scratch  |
+
+**Risk determines confirmation behavior:**
+- `low` risk → proceed if `estimated_effort: small`
+- `medium` risk → proceed if `estimated_effort: small`, confirm if `medium`
+- `high` risk → ALWAYS confirm, regardless of estimated effort
+
+### Causal hypothesis (new — DeepResearch reasoning layer)
+
+The `## Hypothesis` section is now REQUIRED alongside `## Predictions`.
+It must contain:
+- **What** you believe the root cause or core mechanism is
+- **Why** you believe this (citing evidence from ORIENT)
+- **What would change your mind** (falsification condition)
+
+This is distinct from predictions. Predictions are measurable outcomes;
+the hypothesis is the causal model that generates those predictions.
+
+### Alternative approaches (new — explore before committing)
+
+The `## Alternatives considered` section is now REQUIRED. List at
+least one other approach you considered and why you rejected it.
+Reference anti-patterns from ORIENT if they ruled out an approach.
+
+### Predictions (unchanged requirements, enhanced calibration)
+
 - **`## Predictions` is required.** Minimum 3 predictions, each with a
   confidence number (0-100%) and a clearly testable claim.
 - Use the calibration log (loaded earlier) to ground confidence values.
   If your historical "80%" predictions were only correct 60% of the time,
   use 60% this time.
+- **Per-domain calibration**: if the calibration log has domain-specific
+  accuracy data, use the domain-specific accuracy to calibrate, not the
+  global average.
 - Testable means: there is a clear way to mark each prediction as
   correct / partial / wrong / untestable in the matching report.
 
@@ -224,8 +311,8 @@ Commit:
 git -C "$COVAULT_PATH" add . && git -C "$COVAULT_PATH" commit -q -m "hypothesize: <slug>"
 ```
 
-Print the proposal path. If `estimated_effort` is `medium` or `large`,
-WAIT for explicit user confirmation. If `small`, proceed.
+Print the proposal path. Apply confirmation rules based on BOTH
+`estimated_effort` AND `change_type` risk level (see table above).
 
 ---
 
@@ -251,8 +338,11 @@ Rules:
 ## PHASE 4 — VERIFY
 *Function: prediction error checking. Compare each prediction to reality.*
 *Science: predictive processing; Bayesian updating.*
+*Enhanced with: reflection protocol (DeepResearch R3).*
 
 Announce: `[co-vault: PHASE 4/6 — VERIFY]`
+
+### Step 4a — Prediction verdicts (unchanged)
 
 For each prediction in the matching proposal, mark it as:
 - `correct` — prediction matched reality
@@ -264,6 +354,33 @@ These verdicts go into the report's `## Verification` section in PHASE 5.
 
 **Be honest.** Marking a wrong prediction as "partial" to make yourself
 look good corrupts the calibration log and degrades all future planning.
+
+### Step 4b — Hypothesis verdict (new)
+
+Evaluate the causal hypothesis from the proposal:
+- `confirmed` — the mechanism worked as theorized
+- `partially_confirmed` — the mechanism was part of the answer but not all
+- `refuted` — the root cause was something else entirely
+
+This goes into the report's `## Hypothesis verdict` section.
+
+### Step 4c — Reflection (new — DeepResearch R3 protocol)
+
+After verdicts, perform structured reflection. Print this analysis in
+your response AND include a summary in the report's `## Reflection`:
+
+1. **What surprised you?** — Any outcomes you did not predict at all.
+2. **Causal analysis of errors** — For each wrong/partial prediction,
+   WHY was it wrong? Not just "I was wrong about X" but "I was wrong
+   because I assumed Y, which turned out to be false because Z."
+3. **Model update** — What has changed in your mental model of this
+   domain? What will you predict differently next time?
+4. **Anti-pattern candidates** — Did you discover an approach that
+   should NEVER be tried again in this domain? If yes, record it as
+   an anti-pattern fact in PHASE 5.
+
+This reflection costs ~150 tokens and is the primary learning signal
+that makes future tasks in the same domain more accurate.
 
 ---
 
@@ -288,6 +405,36 @@ in frontmatter.
 **Step 5b — Write any new facts.** For each genuinely new piece of
 knowledge from PHASE 3, write a separate atomic file in `facts/`. One
 claim per file. Set `confirmation_count: 1` and `last_confirmed: <now>`.
+
+**Step 5b+ — Write anti-pattern facts (new — DeepResearch knowledge base).**
+If PHASE 4 reflection identified an approach that should never be repeated,
+write it as a fact with `pattern_type: anti-pattern` in frontmatter:
+
+```yaml
+---
+type: fact
+author: agent
+domain: <domain>
+pattern_type: anti-pattern
+created: <now>
+discovered_in: "[[reports/<matching-report>]]"
+confidence: high
+confirmation_count: 1
+last_confirmed: <now>
+---
+
+## Claim
+<approach> does not work in <context> because <reason>.
+
+## Evidence
+<what happened when it was tried>
+
+## Instead
+<what worked instead, or what should be tried>
+```
+
+Anti-patterns are loaded in PHASE 1 (Step 1b) to prevent the agent
+from repeating known-bad approaches.
 
 **Step 5c — Re-confirm existing facts.** If during PHASE 3 you observed
 something that confirms an existing `agent`-authored fact, update its
@@ -446,24 +593,36 @@ explain that autonomous mode without these guards is a footgun.
 5. **Never write a note without complete frontmatter.**
 6. **Never write a proposal without `## Predictions`** containing at least
    3 testable predictions with confidence values.
-7. **Never write a report without `## Verification`** marking every
-   prediction from the matching proposal.
-8. **Never write more than one claim per `facts/` file.**
-9. **Never write more than one topic per file** in person vault.
-10. **Never silently supersede.** Use `superseded_by:` and move old to `_archive/`.
-11. **Never auto-consolidate semantic content.** Only the deterministic
+7. **Never write a proposal without `## Hypothesis`** containing a causal
+   model with a falsification condition.
+8. **Never write a proposal without `## Alternatives considered`** listing
+   at least one rejected approach.
+9. **Never write a proposal without `change_type`** in frontmatter.
+10. **Never write a report without `## Verification`** marking every
+    prediction from the matching proposal.
+11. **Never write a report without `## Hypothesis verdict`** evaluating
+    the causal hypothesis from the matching proposal.
+12. **Never write a report without `## Reflection`** containing causal
+    error analysis and model updates.
+13. **Never write more than one claim per `facts/` file.**
+14. **Never write more than one topic per file** in person vault.
+15. **Never silently supersede.** Use `superseded_by:` and move old to `_archive/`.
+16. **Never auto-consolidate semantic content.** Only the deterministic
     `bin/maintain-vault.sh` may modify confidence, promotion, archival.
-12. **Never proceed past an open conflict in the affected domain.**
-13. **Never copy text between notes.** Use `[[wikilinks]]`.
-14. **Never read or write outside the vaults** during the loop, except
+17. **Never proceed past an open conflict in the affected domain.**
+18. **Never copy text between notes.** Use `[[wikilinks]]`.
+19. **Never read or write outside the vaults** during the loop, except
     project code in PHASE 3.
-15. **Never skip the phase announcement.**
-16. **Never operate on a vault with mismatched `schema_version`.**
-17. **Never bulk-load the person vault.**
-18. **Never duplicate a note.** Search the index first; update if exists.
-19. **Never inflate prediction verdicts.** Mark wrong predictions as
+20. **Never skip the phase announcement.**
+21. **Never operate on a vault with mismatched `schema_version`.**
+22. **Never bulk-load the person vault.**
+23. **Never duplicate a note.** Search the index first; update if exists.
+24. **Never inflate prediction verdicts.** Mark wrong predictions as
     wrong, even if it makes the calibration log look bad.
-20. **Never enter autonomous mode without a feature branch.**
+25. **Never enter autonomous mode without a feature branch.**
+26. **Never repeat a recorded anti-pattern** without explicit user approval.
+27. **Never skip Deep Read** (Step 1c) in ORIENT. The reasoning step is
+    mandatory, not optional.
 
 ---
 

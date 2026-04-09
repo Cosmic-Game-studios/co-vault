@@ -184,6 +184,14 @@ if [ "$SCOPE" = "project" ]; then
   TOTAL_PARTIAL=0
   TOTAL_WRONG=0
 
+  # Track per-domain and per-change-type stats
+  declare -A DOMAIN_CORRECT DOMAIN_PARTIAL DOMAIN_WRONG DOMAIN_TOTAL
+  declare -A CTYPE_CORRECT CTYPE_PARTIAL CTYPE_WRONG CTYPE_TOTAL
+  HYPO_CONFIRMED=0
+  HYPO_PARTIAL=0
+  HYPO_REFUTED=0
+  HYPO_TOTAL=0
+
   if [ -d "reports" ]; then
     report_files=()
     while IFS= read -r f; do
@@ -199,6 +207,32 @@ if [ "$SCOPE" = "project" ]; then
       TOTAL_PARTIAL=$((TOTAL_PARTIAL + PP))
       TOTAL_WRONG=$((TOTAL_WRONG + PW))
       TOTAL_PRED=$((TOTAL_PRED + PC + PP + PW))
+
+      # Per-domain calibration
+      RD=$(grep -m1 -E '^domain:' "$report" 2>/dev/null | sed 's/^domain:[[:space:]]*//' | tr ',' '\n' | head -1 | xargs 2>/dev/null || true)
+      if [ -n "${RD:-}" ]; then
+        DOMAIN_CORRECT[$RD]=$(( ${DOMAIN_CORRECT[$RD]:-0} + PC ))
+        DOMAIN_PARTIAL[$RD]=$(( ${DOMAIN_PARTIAL[$RD]:-0} + PP ))
+        DOMAIN_WRONG[$RD]=$(( ${DOMAIN_WRONG[$RD]:-0} + PW ))
+        DOMAIN_TOTAL[$RD]=$(( ${DOMAIN_TOTAL[$RD]:-0} + PC + PP + PW ))
+      fi
+
+      # Per-change-type calibration
+      CT=$(grep -m1 -E '^change_type:' "$report" 2>/dev/null | awk '{print $2}' || true)
+      if [ -n "${CT:-}" ]; then
+        CTYPE_CORRECT[$CT]=$(( ${CTYPE_CORRECT[$CT]:-0} + PC ))
+        CTYPE_PARTIAL[$CT]=$(( ${CTYPE_PARTIAL[$CT]:-0} + PP ))
+        CTYPE_WRONG[$CT]=$(( ${CTYPE_WRONG[$CT]:-0} + PW ))
+        CTYPE_TOTAL[$CT]=$(( ${CTYPE_TOTAL[$CT]:-0} + PC + PP + PW ))
+      fi
+
+      # Hypothesis verdicts
+      HV=$(grep -m1 -E '^hypothesis_verdict:' "$report" 2>/dev/null | awk '{print $2}' || true)
+      case "${HV:-}" in
+        confirmed) HYPO_CONFIRMED=$((HYPO_CONFIRMED + 1)); HYPO_TOTAL=$((HYPO_TOTAL + 1)) ;;
+        partially_confirmed) HYPO_PARTIAL=$((HYPO_PARTIAL + 1)); HYPO_TOTAL=$((HYPO_TOTAL + 1)) ;;
+        refuted) HYPO_REFUTED=$((HYPO_REFUTED + 1)); HYPO_TOTAL=$((HYPO_TOTAL + 1)) ;;
+      esac
     done
   fi
 
@@ -212,6 +246,12 @@ if [ "$SCOPE" = "project" ]; then
     BRIER="0.000"
   fi
 
+  # Count anti-patterns
+  ANTI_COUNT=0
+  if [ -d "facts" ]; then
+    ANTI_COUNT=$(grep -rlE '^pattern_type:[[:space:]]*anti-pattern' facts/ 2>/dev/null | wc -l || echo "0")
+  fi
+
   cat > calibration_log.md <<CALIB
 ---
 type: calibration
@@ -222,12 +262,17 @@ total_correct: $TOTAL_CORRECT
 total_partial: $TOTAL_PARTIAL
 total_wrong: $TOTAL_WRONG
 brier_score: $BRIER
+hypothesis_confirmed: $HYPO_CONFIRMED
+hypothesis_partially_confirmed: $HYPO_PARTIAL
+hypothesis_refuted: $HYPO_REFUTED
+anti_patterns_recorded: $ANTI_COUNT
 ---
 
 # Calibration log
 
 This file is auto-maintained by \`bin/maintain-vault.sh\`. It aggregates
-prediction outcomes from every report in this vault.
+prediction outcomes, hypothesis verdicts, and learning metrics from
+every report in this vault.
 
 ## Lifetime totals
 - **Total predictions made**: $TOTAL_PRED
@@ -236,16 +281,74 @@ prediction outcomes from every report in this vault.
 - **Wrong**: $TOTAL_WRONG
 - **Brier-like score**: $BRIER (lower is better, 0 = perfect, 1 = worst)
 
+## Hypothesis accuracy
+- **Hypotheses evaluated**: $HYPO_TOTAL
+- **Confirmed**: $HYPO_CONFIRMED
+- **Partially confirmed**: $HYPO_PARTIAL
+- **Refuted**: $HYPO_REFUTED
+
+## Anti-patterns recorded
+- **Total anti-patterns**: $ANTI_COUNT
+
+CALIB
+
+  # Per-domain calibration section
+  if [ ${#DOMAIN_TOTAL[@]} -gt 0 ]; then
+    cat >> calibration_log.md <<DOMHDR
+## Per-domain calibration
+| domain | predictions | correct | partial | wrong | accuracy |
+|--------|------------|---------|---------|-------|----------|
+DOMHDR
+    for domain in $(echo "${!DOMAIN_TOTAL[@]}" | tr ' ' '\n' | sort); do
+      DT=${DOMAIN_TOTAL[$domain]}
+      DC=${DOMAIN_CORRECT[$domain]:-0}
+      DP=${DOMAIN_PARTIAL[$domain]:-0}
+      DW=${DOMAIN_WRONG[$domain]:-0}
+      if [ "$DT" -gt 0 ]; then
+        ACC_X100=$((DC * 100 / DT))
+      else
+        ACC_X100=0
+      fi
+      echo "| $domain | $DT | $DC | $DP | $DW | ${ACC_X100}% |" >> calibration_log.md
+    done
+    echo >> calibration_log.md
+  fi
+
+  # Per-change-type calibration section
+  if [ ${#CTYPE_TOTAL[@]} -gt 0 ]; then
+    cat >> calibration_log.md <<CTHDR
+## Per-change-type calibration
+| change_type | predictions | correct | partial | wrong | accuracy |
+|-------------|------------|---------|---------|-------|----------|
+CTHDR
+    for ctype in $(echo "${!CTYPE_TOTAL[@]}" | tr ' ' '\n' | sort); do
+      CT_T=${CTYPE_TOTAL[$ctype]}
+      CT_C=${CTYPE_CORRECT[$ctype]:-0}
+      CT_P=${CTYPE_PARTIAL[$ctype]:-0}
+      CT_W=${CTYPE_WRONG[$ctype]:-0}
+      if [ "$CT_T" -gt 0 ]; then
+        CT_ACC=$((CT_C * 100 / CT_T))
+      else
+        CT_ACC=0
+      fi
+      echo "| $ctype | $CT_T | $CT_C | $CT_P | $CT_W | ${CT_ACC}% |" >> calibration_log.md
+    done
+    echo >> calibration_log.md
+  fi
+
+  cat >> calibration_log.md <<INTERP
 ## Interpretation
-- A score below 0.20 means the agent is well-calibrated.
-- A score above 0.40 means the agent is over-confident on average.
+- A Brier score below 0.20 means the agent is well-calibrated.
+- A Brier score above 0.40 means the agent is over-confident on average.
+- Use per-domain accuracy to calibrate confidence for domain-specific tasks.
+- Use per-change-type accuracy to assess risk for different kinds of changes.
 - The agent reads this file on session start to ground its prediction
   confidence in past performance.
 
 *Last updated: $NOW*
-CALIB
+INTERP
 
-  echo "    calibration: $TOTAL_PRED predictions, brier=$BRIER"
+  echo "    calibration: $TOTAL_PRED predictions, brier=$BRIER, hypotheses=$HYPO_TOTAL, anti-patterns=$ANTI_COUNT"
 else
   echo "==> [6/6] Skipping calibration update (person vault)"
 fi

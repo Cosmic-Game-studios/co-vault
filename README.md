@@ -21,7 +21,9 @@ Both are just folders of Markdown:
 - 🧠 **Self-describing vaults** — manifest + schemas live next to the data, so any LLM can pick it up without prior knowledge.
 - 🔒 **Your notes are immutable** — agents can read them, cite them, but never edit them.
 - 🛑 **Conflicts stop the agent** — when its observations contradict your decisions, it asks instead of overwriting.
-- 🔁 **5-phase loop on every task** — ORIENT → PROPOSE → EXECUTE → REPORT → REQUEST_REVIEW. No silent steps.
+- 🔁 **6-phase loop on every task** — ORIENT → HYPOTHESIZE → EXECUTE → VERIFY → CONSOLIDATE → REVIEW. No silent steps.
+- 🧪 **Structured reasoning** — Deep Read analysis, causal hypotheses, change-type classification, and reflection protocol (inspired by [DeepResearch](https://github.com/Cosmic-Game-studios/deepresearch)).
+- 🚫 **Anti-pattern tracking** — failed approaches are recorded and loaded on every task to prevent repeating mistakes.
 - 🔌 **Tool-agnostic** — works with Claude Code today, Cursor/Aider/anything-with-files tomorrow.
 
 If you've ever yelled at your AI for the third time in a week *"I told you we don't use Prisma"*, this is for you.
@@ -196,7 +198,7 @@ The person vault is designed to grow without burning context:
 
 ## The science behind co-vault
 
-Every design decision in v0.6 maps to a peer-reviewed concept from cognitive science. This is not buzzword garnish — each citation corresponds to a concrete mechanism in the loop.
+Every design decision in v0.7 maps to a peer-reviewed concept from cognitive science or a proven technique from autonomous optimization research. This is not buzzword garnish — each citation corresponds to a concrete mechanism in the loop.
 
 | Concept | Citation | How co-vault uses it |
 |---|---|---|
@@ -210,19 +212,22 @@ Every design decision in v0.6 maps to a peer-reviewed concept from cognitive sci
 | **Dual-process theory** | Kahneman 2011 | `estimated_effort: small` proposals proceed automatically (System 1). `medium` and `large` require explicit user confirmation (System 2). |
 | **Distributed cognition** | Hutchins 1995 | The vault IS distributed cognition — the human, the agent, and the artifact (Markdown files) form a single cognitive system. The author hierarchy makes the division of labor explicit. |
 | **Schema theory** | Bartlett 1932; Piaget 1952 | The 6-phase loop is itself a schema: minor observations are assimilated into existing facts (`confirmation_count++`); contradictions trigger accommodation (a `conflict` note that blocks work until restructured). |
+| **Structured reasoning** | DeepResearch R1-R3 | The Deep Read protocol in ORIENT forces problem decomposition, constraint inventory, and approach enumeration BEFORE committing to a plan. The causal hypothesis in HYPOTHESIZE separates "what I think will happen" from "why I think it will happen." The reflection in VERIFY traces prediction errors back to root causes. |
+| **Anti-pattern knowledge base** | DeepResearch knowledge acquisition | Failed approaches are recorded as anti-pattern facts and loaded during ORIENT. This prevents the agent from repeating known-bad strategies — the same mechanism that gives DeepResearch +14% improvement over blind search. |
+| **Change-type classification** | DeepResearch mutation types | Every proposal classifies its change type (parametric → architectural) with associated risk levels. Per-change-type calibration tracks which kinds of changes the agent is best/worst at predicting, enabling more accurate confidence values. |
 
 **The 6-phase loop, mapped:**
 
 ```
-PHASE 1 ORIENT       → situated perception (Hutchins)
-PHASE 2 HYPOTHESIZE  → generative model with predictions (Friston)
+PHASE 1 ORIENT       → situated perception (Hutchins) + Deep Read (DeepResearch R1)
+PHASE 2 HYPOTHESIZE  → generative model with predictions (Friston) + causal hypothesis (R2)
 PHASE 3 EXECUTE      → motor action
-PHASE 4 VERIFY       → prediction error checking (Bayesian updating)
-PHASE 5 CONSOLIDATE  → memory consolidation (McClelland CLS)
+PHASE 4 VERIFY       → prediction error checking (Bayesian updating) + reflection (R3)
+PHASE 5 CONSOLIDATE  → memory consolidation (McClelland CLS) + anti-pattern recording
 PHASE 6 REVIEW       → executive control / accommodation (only on conflict)
 ```
 
-Each phase writes structured data that feeds the next. Each phase has a measurable output. None of this is metaphor — predictions get verdicts, verdicts feed the calibration log, the calibration log changes future confidence values. It is a closed loop with a real learning signal.
+Each phase writes structured data that feeds the next. Each phase has a measurable output. None of this is metaphor — predictions get verdicts, hypotheses get confirmed or refuted, reflections generate anti-patterns, anti-patterns prevent repeated mistakes, and the calibration log tracks accuracy per domain and per change type. It is a closed loop with multiple learning signals.
 
 ---
 
@@ -458,6 +463,12 @@ Each developer points `COVAULT_PATH` at the same shared git repo. The pre-commit
 - [x] BOOTSTRAP for new projects and new person vaults
 - [x] ABORT command for mid-task cancellation
 - [x] Validation script + GitHub Actions CI
+- [x] **Structured reasoning protocol** — Deep Read in ORIENT, causal hypothesis in HYPOTHESIZE, reflection in VERIFY (inspired by DeepResearch R1-R3)
+- [x] **Change-type classification** — proposals categorized as parametric → architectural with risk-based confirmation rules
+- [x] **Anti-pattern tracking** — failed approaches recorded as facts, loaded in ORIENT to prevent repetition
+- [x] **Per-domain calibration** — track prediction accuracy per domain for domain-specific confidence adjustment
+- [x] **Per-change-type calibration** — track accuracy by change type to assess risk for different kinds of work
+- [x] **Hypothesis tracking** — causal models verified separately from predictions, with confirmed/refuted verdicts
 - [ ] Cursor `.cursorrules` port
 - [ ] Aider conventions port
 - [ ] Dataview query pack for `index.md` (open conflicts, recent reports, stale proposals)
