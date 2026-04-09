@@ -1,6 +1,7 @@
 ---
 name: co-vault
-description: Use whenever the user gives you a task in a project where COVAULT_PATH
+description: >
+  Use whenever the user gives you a task in a project where COVAULT_PATH
   is set, OR whenever COVAULT_PERSON is set, OR the user says "bootstrap co-vault",
   "co-vault review", "abort", or "autonomous: <intent>". This skill operates
   against self-describing vaults using a 6-phase loop grounded in cognitive
