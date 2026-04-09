@@ -2,8 +2,9 @@
 # This file is the single source of truth for vault structure and schemas.
 # Agents MUST read this file before performing any operation on the vault.
 
-covault_version: "0.3"
+covault_version: "0.4"
 schema_version: 1
+scope: project                                # vs "person" for person vaults
 vault_name: "<set during bootstrap>"
 
 # Authority hierarchy — applied to every note based on its `author:` field.
