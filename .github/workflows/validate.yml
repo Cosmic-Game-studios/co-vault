@@ -1,0 +1,46 @@
+name: validate skeletons
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: |
+          chmod +x bin/validate-vault.sh
+          chmod +x bin/rebuild-index.sh
+          chmod +x install.sh
+          chmod +x examples/pre-commit-hook.sh
+          chmod +x examples/person-pre-commit-hook.sh
+
+      - name: Validate project vault skeleton
+        run: ./bin/validate-vault.sh examples/vault-skeleton
+
+      - name: Validate person vault skeleton
+        run: ./bin/validate-vault.sh examples/person-vault-skeleton
+
+      - name: Test rebuild-index on person skeleton
+        run: |
+          ./bin/rebuild-index.sh examples/person-vault-skeleton
+          test -f examples/person-vault-skeleton/_index.md
+          grep -q '^type: index' examples/person-vault-skeleton/_index.md
+
+      - name: Verify SKILL.md exists and has frontmatter
+        run: |
+          test -f SKILL.md
+          head -1 SKILL.md | grep -q '^---$'
+          grep -q '^name: co-vault$' SKILL.md
+          grep -q '^description:' SKILL.md
+
+      - name: Verify README has install instructions
+        run: |
+          grep -q 'install.sh' README.md
+          grep -q 'COVAULT_PATH' README.md
+          grep -q 'COVAULT_PERSON' README.md
